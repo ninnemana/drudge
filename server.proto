@@ -1,5 +1,5 @@
 syntax = "proto3";
-package server;
+package drudge;
 
 import "google/protobuf/any.proto";
 
