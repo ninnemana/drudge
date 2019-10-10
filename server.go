@@ -5,7 +5,6 @@ import (
 	"log"
 	"net"
 	"net/http"
-	"os"
 	"time"
 
 	grpc_middleware "github.com/grpc-ecosystem/go-grpc-middleware"
@@ -68,21 +67,19 @@ type Options struct {
 	Mux []gwruntime.ServeMuxOption
 
 	OnRegister func(server *grpc.Server) error
+
+	TraceExporter telemetry.TraceExporter
+	TraceConfig   interface{}
 }
 
 func Run(ctx context.Context, opts Options) error {
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
 
-	if projectID := os.Getenv(GoogleProjectID); projectID != "" {
-		prefix := ""
-		if opts.Metrics != nil {
-			prefix = opts.Metrics.Prefix
-		}
-
-		flush, err := telemetry.StackDriver(projectID, prefix, os.Getenv(GoogleServiceAccount))
+	if opts.TraceExporter != nil {
+		flush, err := opts.TraceExporter(opts.TraceConfig)
 		if err != nil {
-			return errors.Wrap(err, "failed to register telemetry services")
+			return errors.WithMessage(err, "failed to register trace exporter")
 		}
 		defer flush()
 	}
