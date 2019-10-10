@@ -34,21 +34,8 @@ type Endpoint struct {
 	Addr    string
 }
 
-// Metrics defines the options that are unique to instrumentation of the application.
-type Metrics struct {
-	// Prefix is the prefix that will be applied to all stats.
-	Prefix string
-
-	// PullAddress is the network address that the collected stats
-	// should be served from.
-	PullAddress string
-}
-
 // Options is a set of options to be passed to Run
 type Options struct {
-	// Metrics contains all properties pertaining to instrumentation.
-	Metrics *Metrics
-
 	// BasePath is the root path that the HTTP service listens on
 	BasePath string
 
@@ -84,14 +71,6 @@ func Run(ctx context.Context, opts Options) error {
 			return errors.WithMessage(err, "failed to register trace exporter")
 		}
 		defer flush()
-	}
-
-	if opts.Metrics != nil && opts.Metrics.PullAddress != "" {
-		go func() {
-			if err := telemetry.StartPrometheus(opts.Metrics.PullAddress); err != nil {
-				log.Printf("Failed to register metric exporter: %v", err)
-			}
-		}()
 	}
 
 	lg := initLogger(-1, time.RFC3339)
@@ -155,6 +134,7 @@ func Run(ctx context.Context, opts Options) error {
 
 	// Register Prometheus metrics handler.
 	r.Handle("/metrics", promhttp.Handler())
+	r.Handle("/metrics/list", telemetry.RegistryHandler{})
 
 	gw, err := newGateway(ctx, conn, opts.Mux, opts.Handlers)
 	if err != nil {

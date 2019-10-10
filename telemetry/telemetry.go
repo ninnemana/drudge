@@ -3,10 +3,8 @@ package telemetry
 import (
 	"context"
 	"log"
-	"net/http"
 	"time"
 
-	"contrib.go.opencensus.io/exporter/prometheus"
 	"contrib.go.opencensus.io/exporter/stackdriver"
 	"github.com/opentracing/opentracing-go"
 	"github.com/pkg/errors"
@@ -118,35 +116,6 @@ func StackDriver(c interface{}) (func(), error) {
 	trace.ApplyConfig(trace.Config{DefaultSampler: trace.AlwaysSample()})
 
 	return sd.Flush, nil
-}
-
-// StartPrometheus establishes a Prometheus exporter for OpenCensus instrumentation and creates an HTTP server
-// allowing a Prometheus instance to scrape the recorded metrics by the application.
-func StartPrometheus(addr string) error {
-	if addr == "" {
-		return errors.Errorf("the provided '%s' address is not valid", addr)
-	}
-
-	pe, err := prometheus.NewExporter(prometheus.Options{
-		OnError: func(err error) {
-			log.Println("prom error: ", err)
-		},
-	})
-	if err != nil {
-		return errors.Wrap(err, "failed to create Prometheus exporter")
-	}
-
-	// Ensure that we register it as a stats exporter.
-	view.RegisterExporter(pe)
-	view.SetReportingPeriod(time.Second * 10)
-
-	mux := http.NewServeMux()
-	mux.Handle("/metrics", pe)
-	mux.Handle("/metrics/list", RegistryHandler{})
-	return errors.Wrap(
-		http.ListenAndServe(addr, mux),
-		"failed to run Prometheus /metrics endpoint",
-	)
 }
 
 func MeasureInt(ctx context.Context, m *stats.Int64Measure, v int64, tags ...tag.Mutator) {
