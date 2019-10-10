@@ -5,12 +5,12 @@ import (
 	"log"
 	"net"
 	"net/http"
-	"os"
 	"time"
 
 	grpc_middleware "github.com/grpc-ecosystem/go-grpc-middleware"
 	grpc_zap "github.com/grpc-ecosystem/go-grpc-middleware/logging/zap"
 	grpc_ctxtags "github.com/grpc-ecosystem/go-grpc-middleware/tags"
+	grpc_opentracing "github.com/grpc-ecosystem/go-grpc-middleware/tracing/opentracing"
 	grpc_validator "github.com/grpc-ecosystem/go-grpc-middleware/validator"
 	grpc_prometheus "github.com/grpc-ecosystem/go-grpc-prometheus"
 	gwruntime "github.com/grpc-ecosystem/grpc-gateway/runtime"
@@ -18,6 +18,7 @@ import (
 	"go.opencensus.io/plugin/ocgrpc"
 	"go.opencensus.io/plugin/ochttp"
 	"google.golang.org/grpc"
+	"github.com/prometheus/client_golang/prometheus/promhttp"
 
 	"github.com/ninnemana/drudge/telemetry"
 )
@@ -68,21 +69,19 @@ type Options struct {
 	Mux []gwruntime.ServeMuxOption
 
 	OnRegister func(server *grpc.Server) error
+
+	TraceExporter telemetry.TraceExporter
+	TraceConfig   interface{}
 }
 
 func Run(ctx context.Context, opts Options) error {
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
 
-	if projectID := os.Getenv(GoogleProjectID); projectID != "" {
-		prefix := ""
-		if opts.Metrics != nil {
-			prefix = opts.Metrics.Prefix
-		}
-
-		flush, err := telemetry.StackDriver(projectID, prefix, os.Getenv(GoogleServiceAccount))
+	if opts.TraceExporter != nil {
+		flush, err := opts.TraceExporter(opts.TraceConfig)
 		if err != nil {
-			return errors.Wrap(err, "failed to register telemetry services")
+			return errors.WithMessage(err, "failed to register trace exporter")
 		}
 		defer flush()
 	}
@@ -103,12 +102,14 @@ func Run(ctx context.Context, opts Options) error {
 	rpc := grpc.NewServer(
 		grpc_middleware.WithUnaryServerChain(
 			grpc_validator.UnaryServerInterceptor(),
+			grpc_opentracing.UnaryServerInterceptor(),
 			grpc_ctxtags.UnaryServerInterceptor(grpc_ctxtags.WithFieldExtractor(grpc_ctxtags.CodeGenRequestFieldExtractor)),
 			grpc_zap.UnaryServerInterceptor(lg, grpc_zap.WithLevels(codeToLevel)),
 			grpc_prometheus.UnaryServerInterceptor,
 		),
 		grpc_middleware.WithStreamServerChain(
 			grpc_validator.StreamServerInterceptor(),
+			grpc_opentracing.StreamServerInterceptor(),
 			grpc_ctxtags.StreamServerInterceptor(grpc_ctxtags.WithFieldExtractor(grpc_ctxtags.CodeGenRequestFieldExtractor)),
 			grpc_zap.StreamServerInterceptor(lg, grpc_zap.WithLevels(codeToLevel)),
 			grpc_prometheus.StreamServerInterceptor,
@@ -123,6 +124,8 @@ func Run(ctx context.Context, opts Options) error {
 	if err := opts.OnRegister(rpc); err != nil {
 		return errors.Wrap(err, "failed to register RPC service")
 	}
+
+	grpc_prometheus.Register(rpc)
 
 	list, err := net.Listen("tcp", opts.RPC.Addr)
 	if err != nil {
@@ -149,6 +152,9 @@ func Run(ctx context.Context, opts Options) error {
 	r := http.NewServeMux()
 
 	r.HandleFunc("/openapi/", swaggerServer(opts.SwaggerDir))
+	
+	// Register Prometheus metrics handler.    
+    http.Handle("/metrics", promhttp.Handler())
 
 	gw, err := newGateway(ctx, conn, opts.Mux, opts.Handlers)
 	if err != nil {
