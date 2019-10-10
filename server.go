@@ -10,6 +10,7 @@ import (
 	grpc_middleware "github.com/grpc-ecosystem/go-grpc-middleware"
 	grpc_zap "github.com/grpc-ecosystem/go-grpc-middleware/logging/zap"
 	grpc_ctxtags "github.com/grpc-ecosystem/go-grpc-middleware/tags"
+	grpc_opentracing "github.com/grpc-ecosystem/go-grpc-middleware/tracing/opentracing"
 	grpc_validator "github.com/grpc-ecosystem/go-grpc-middleware/validator"
 	grpc_prometheus "github.com/grpc-ecosystem/go-grpc-prometheus"
 	gwruntime "github.com/grpc-ecosystem/grpc-gateway/runtime"
@@ -100,12 +101,14 @@ func Run(ctx context.Context, opts Options) error {
 	rpc := grpc.NewServer(
 		grpc_middleware.WithUnaryServerChain(
 			grpc_validator.UnaryServerInterceptor(),
+			grpc_opentracing.UnaryServerInterceptor(),
 			grpc_ctxtags.UnaryServerInterceptor(grpc_ctxtags.WithFieldExtractor(grpc_ctxtags.CodeGenRequestFieldExtractor)),
 			grpc_zap.UnaryServerInterceptor(lg, grpc_zap.WithLevels(codeToLevel)),
 			grpc_prometheus.UnaryServerInterceptor,
 		),
 		grpc_middleware.WithStreamServerChain(
 			grpc_validator.StreamServerInterceptor(),
+			grpc_opentracing.StreamServerInterceptor(),
 			grpc_ctxtags.StreamServerInterceptor(grpc_ctxtags.WithFieldExtractor(grpc_ctxtags.CodeGenRequestFieldExtractor)),
 			grpc_zap.StreamServerInterceptor(lg, grpc_zap.WithLevels(codeToLevel)),
 			grpc_prometheus.StreamServerInterceptor,
