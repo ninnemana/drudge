@@ -18,6 +18,7 @@ import (
 	"go.opencensus.io/plugin/ocgrpc"
 	"go.opencensus.io/plugin/ochttp"
 	"google.golang.org/grpc"
+	"github.com/prometheus/client_golang/prometheus/promhttp"
 
 	"github.com/ninnemana/drudge/telemetry"
 )
@@ -124,6 +125,8 @@ func Run(ctx context.Context, opts Options) error {
 		return errors.Wrap(err, "failed to register RPC service")
 	}
 
+	grpc_prometheus.Register(rpc)
+
 	list, err := net.Listen("tcp", opts.RPC.Addr)
 	if err != nil {
 		return errors.Wrap(err, "failed to open TCP connection")
@@ -149,6 +152,9 @@ func Run(ctx context.Context, opts Options) error {
 	r := http.NewServeMux()
 
 	r.HandleFunc("/openapi/", swaggerServer(opts.SwaggerDir))
+	
+	// Register Prometheus metrics handler.    
+    http.Handle("/metrics", promhttp.Handler())
 
 	gw, err := newGateway(ctx, conn, opts.Mux, opts.Handlers)
 	if err != nil {
