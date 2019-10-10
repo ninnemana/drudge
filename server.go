@@ -15,10 +15,10 @@ import (
 	grpc_prometheus "github.com/grpc-ecosystem/go-grpc-prometheus"
 	gwruntime "github.com/grpc-ecosystem/grpc-gateway/runtime"
 	"github.com/pkg/errors"
+	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"go.opencensus.io/plugin/ocgrpc"
 	"go.opencensus.io/plugin/ochttp"
 	"google.golang.org/grpc"
-	"github.com/prometheus/client_golang/prometheus/promhttp"
 
 	"github.com/ninnemana/drudge/telemetry"
 )
@@ -152,9 +152,9 @@ func Run(ctx context.Context, opts Options) error {
 	r := http.NewServeMux()
 
 	r.HandleFunc("/openapi/", swaggerServer(opts.SwaggerDir))
-	
-	// Register Prometheus metrics handler.    
-    http.Handle("/metrics", promhttp.Handler())
+
+	// Register Prometheus metrics handler.
+	r.Handle("/metrics", promhttp.Handler())
 
 	gw, err := newGateway(ctx, conn, opts.Mux, opts.Handlers)
 	if err != nil {
