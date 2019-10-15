@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"net"
 	"net/http"
-	"time"
 
 	gwruntime "github.com/grpc-ecosystem/grpc-gateway/runtime"
 	"go.opencensus.io/plugin/ocgrpc"
@@ -39,21 +38,26 @@ func dialTCP(ctx context.Context, addr string) (*grpc.ClientConn, error) {
 // dialUnix creates a client connection via a unix domain socket.
 // "addr" must be a valid path to the socket.
 func dialUnix(ctx context.Context, addr string) (*grpc.ClientConn, error) {
-	d := func(addr string, timeout time.Duration) (net.Conn, error) {
-		return net.DialTimeout("unix", addr, timeout)
+	d := func(ctx context.Context, addr string) (net.Conn, error) {
+		return net.Dial("unix", addr)
 	}
+
 	return grpc.DialContext(
 		ctx,
 		addr,
 		grpc.WithInsecure(),
-		grpc.WithDialer(d),
+		grpc.WithContextDialer(d),
 		grpc.WithStatsHandler(&ocgrpc.ClientHandler{}),
 	)
 }
 
 // newGateway returns a new gateway server which translates HTTP into gRPC.
-func newGateway(ctx context.Context, conn *grpc.ClientConn, opts []gwruntime.ServeMuxOption, handlers []Handler) (http.Handler, error) {
-
+func newGateway(
+	ctx context.Context,
+	conn *grpc.ClientConn,
+	opts []gwruntime.ServeMuxOption,
+	handlers []Handler,
+) (http.Handler, error) {
 	mux := gwruntime.NewServeMux(opts...)
 
 	for _, f := range handlers {

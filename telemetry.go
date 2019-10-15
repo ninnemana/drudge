@@ -1,8 +1,6 @@
-package telemetry
+package drudge
 
 import (
-	"context"
-	"log"
 	"time"
 
 	"contrib.go.opencensus.io/exporter/stackdriver"
@@ -12,7 +10,6 @@ import (
 	jaegercfg "github.com/uber/jaeger-client-go/config"
 	jaegerlog "github.com/uber/jaeger-client-go/log"
 	"github.com/uber/jaeger-lib/metrics"
-	"go.opencensus.io/stats"
 	"go.opencensus.io/stats/view"
 	"go.opencensus.io/tag"
 	"go.opencensus.io/trace"
@@ -95,11 +92,8 @@ func StackDriver(c interface{}) (func(), error) {
 	sd, err := stackdriver.NewExporter(stackdriver.Options{
 		ProjectID: cfg.ProjectID,
 		// MetricPrefix helps uniquely identify your metrics.
-		MetricPrefix: cfg.Prefix,
-		Location:     "k8s_container",
-		OnError: func(err error) {
-			log.Printf("failed to export: %v\n", err)
-		},
+		MetricPrefix:            cfg.Prefix,
+		Location:                "k8s_container",
 		MonitoringClientOptions: opt,
 		TraceClientOptions:      opt,
 	})
@@ -116,78 +110,4 @@ func StackDriver(c interface{}) (func(), error) {
 	trace.ApplyConfig(trace.Config{DefaultSampler: trace.AlwaysSample()})
 
 	return sd.Flush, nil
-}
-
-func MeasureInt(ctx context.Context, m *stats.Int64Measure, v int64, tags ...tag.Mutator) {
-	if m == nil {
-		return
-	}
-
-	switch len(tags) {
-	case 0:
-		stats.Record(ctx, m.M(v))
-	default:
-		_ = stats.RecordWithTags(ctx, tags, m.M(v))
-	}
-}
-
-func MeasureFloat(ctx context.Context, m *stats.Float64Measure, v float64, tags ...tag.Mutator) {
-	if m == nil {
-		return
-	}
-
-	switch len(tags) {
-	case 0:
-		stats.Record(ctx, m.M(v))
-	default:
-		_ = stats.RecordWithTags(ctx, tags, m.M(v))
-	}
-}
-
-// Int64Measure establishes a new OpenCensus Integer Metric based on the provided information and registers
-// a configured stats.View.
-func Int64Measure(name, description, unit string, tags []tag.Key, aggregate *view.Aggregation) *stats.Int64Measure {
-	if registeredMetrics.exists(name) {
-		log.Fatalf("the provided metric name '%s' is already registered", name)
-	}
-
-	s := stats.Int64(name, description, unit)
-
-	if err := view.Register(&view.View{
-		Name:        name,
-		Measure:     s,
-		Description: description,
-		Aggregation: aggregate,
-		TagKeys:     tags,
-	}); err != nil {
-		_ = err
-	}
-
-	registeredMetrics.put(name, s)
-
-	return s
-}
-
-// Float64Measure establishes a new OpenCensus Floating Point Metric based on the provided information and registers
-// a configured stats.View.
-func Float64Measure(name, description, unit string, tags []tag.Key, aggregate *view.Aggregation) *stats.Float64Measure {
-	if registeredMetrics.exists(name) {
-		log.Fatalf("the provided metric name '%s' is already registered", name)
-	}
-
-	s := stats.Float64(name, description, unit)
-
-	if err := view.Register(&view.View{
-		Name:        name,
-		Measure:     s,
-		Description: description,
-		Aggregation: aggregate,
-		TagKeys:     tags,
-	}); err != nil {
-		_ = err
-	}
-
-	registeredMetrics.put(name, s)
-
-	return s
 }
