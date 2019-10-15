@@ -85,6 +85,7 @@ func StackDriver(c interface{}) (func(), error) {
 	if !ok {
 		return nil, errors.Errorf("expected '%T', received '%T' as configuration", StackDriverConfig{}, c)
 	}
+
 	opt := []option.ClientOption{
 		option.WithCredentialsJSON([]byte(cfg.ServiceAccount)),
 	}
