@@ -63,7 +63,6 @@ type Options struct {
 }
 
 func Run(ctx context.Context, opts Options) error {
-
 	lg := initLogger(-1, time.RFC3339)
 	// Make sure that log statements internal to gRPC library are logged using the zapLogger as well.
 	grpc_zap.ReplaceGrpcLogger(lg)

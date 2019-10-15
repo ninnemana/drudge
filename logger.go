@@ -10,10 +10,6 @@ import (
 	"google.golang.org/grpc/codes"
 )
 
-var (
-	customTimeFormat string
-)
-
 // codeToLevel redirects OK to DEBUG level logging instead of INFO
 // This is example how you can log several gRPC code results
 func codeToLevel(code codes.Code) zapcore.Level {
@@ -25,8 +21,10 @@ func codeToLevel(code codes.Code) zapcore.Level {
 	return grpc_zap.DefaultCodeToLevel(code)
 }
 
-func customTimeEncoder(t time.Time, enc zapcore.PrimitiveArrayEncoder) {
-	enc.AppendString(t.Format(customTimeFormat))
+func customTimeEncoder(format string) func(time.Time, zapcore.PrimitiveArrayEncoder) {
+	return func(t time.Time, enc zapcore.PrimitiveArrayEncoder) {
+		enc.AppendString(t.Format(format))
+	}
 }
 
 // initLogger sets up uber's zap structured logger for logging our gRPC requests.
@@ -35,7 +33,7 @@ func initLogger(lvl int, timeFormat string) *zap.Logger {
 
 	// High-priority output should also go to standard error, and low-priority
 	// output should also go to standard out.
-	// It is usefull for Kubernetes deployment.
+	// It is useful for Kubernetes deployment.
 	// Kubernetes interprets os.Stdout log items as INFO and os.Stderr log items
 	// as ERROR by default.
 	highPriority := zap.LevelEnablerFunc(func(lvl zapcore.Level) bool {
@@ -48,7 +46,7 @@ func initLogger(lvl int, timeFormat string) *zap.Logger {
 	consoleErrors := zapcore.Lock(os.Stderr)
 
 	ecfg := zap.NewProductionEncoderConfig()
-	ecfg.EncodeTime = customTimeEncoder
+	ecfg.EncodeTime = customTimeEncoder(time.RFC3339)
 
 	consoleEncoder := zapcore.NewJSONEncoder(ecfg)
 

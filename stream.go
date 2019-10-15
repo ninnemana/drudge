@@ -16,11 +16,19 @@ import (
 )
 
 // ForwardResponseStream forwards the stream from gRPC server to REST client.
-func ForwardResponseStream(ctx context.Context, mux *runtime.ServeMux, marshaler runtime.Marshaler, w http.ResponseWriter, req *http.Request, recv func() (goproto.Message, error), opts ...func(context.Context, http.ResponseWriter, goproto.Message) error) {
+func ForwardResponseStream(
+	ctx context.Context,
+	mux *runtime.ServeMux,
+	marshaler runtime.Marshaler,
+	w http.ResponseWriter,
+	req *http.Request,
+	recv func() (goproto.Message, error), opts ...func(context.Context, http.ResponseWriter, goproto.Message) error,
+) {
 	f, ok := w.(http.Flusher)
 	if !ok {
 		grpclog.Infof("Flush not supported in %T", w)
 		http.Error(w, "unexpected type of web server", http.StatusInternalServerError)
+
 		return
 	}
 
@@ -28,17 +36,21 @@ func ForwardResponseStream(ctx context.Context, mux *runtime.ServeMux, marshaler
 	if !ok {
 		grpclog.Infof("Failed to extract ServerMetadata from context")
 		http.Error(w, "unexpected error", http.StatusInternalServerError)
+
 		return
 	}
-	handleForwardResponseServerMetadata(w, mux, md)
+
+	handleForwardResponseServerMetadata(w, md)
 
 	w.Header().Set("Content-Type", marshaler.ContentType())
+
 	if err := handleForwardResponseOptions(ctx, w, nil, opts); err != nil {
 		runtime.HTTPError(ctx, mux, marshaler, w, req, err)
 		return
 	}
 
 	chunks := []goproto.Message{}
+
 	for {
 		resp, err := recv()
 		if err == io.EOF {
@@ -49,6 +61,7 @@ func ForwardResponseStream(ctx context.Context, mux *runtime.ServeMux, marshaler
 			handleForwardResponseStreamError(marshaler, w, err)
 			return
 		}
+
 		if err := handleForwardResponseOptions(ctx, w, resp, opts); err != nil {
 			handleForwardResponseStreamError(marshaler, w, err)
 			return
@@ -61,6 +74,7 @@ func ForwardResponseStream(ctx context.Context, mux *runtime.ServeMux, marshaler
 	if err != nil {
 		grpclog.Infof("Failed to marshal response: %v", err)
 		handleForwardResponseStreamError(marshaler, w, err)
+
 		return
 	}
 
@@ -72,7 +86,7 @@ func ForwardResponseStream(ctx context.Context, mux *runtime.ServeMux, marshaler
 	f.Flush()
 }
 
-func handleForwardResponseServerMetadata(w http.ResponseWriter, mux *runtime.ServeMux, md runtime.ServerMetadata) {
+func handleForwardResponseServerMetadata(w http.ResponseWriter, md runtime.ServerMetadata) {
 	for k, vs := range md.HeaderMD {
 		for _, v := range vs {
 			w.Header().Add(k, v)
@@ -80,16 +94,23 @@ func handleForwardResponseServerMetadata(w http.ResponseWriter, mux *runtime.Ser
 	}
 }
 
-func handleForwardResponseOptions(ctx context.Context, w http.ResponseWriter, resp proto.Message, opts []func(context.Context, http.ResponseWriter, goproto.Message) error) error {
+func handleForwardResponseOptions(
+	ctx context.Context,
+	w http.ResponseWriter,
+	resp proto.Message,
+	opts []func(context.Context, http.ResponseWriter, goproto.Message) error,
+) error {
 	if len(opts) == 0 {
 		return nil
 	}
+
 	for _, opt := range opts {
 		if err := opt(ctx, w, resp); err != nil {
 			grpclog.Infof("Error handling ForwardResponseOptions: %v", err)
 			return err
 		}
 	}
+
 	return nil
 }
 
@@ -104,6 +125,7 @@ func handleForwardResponseStreamError(marshaler runtime.Marshaler, w http.Respon
 	if !ok {
 		s = status.New(codes.Unknown, err.Error())
 	}
+
 	w.WriteHeader(runtime.HTTPStatusFromCode(s.Code()))
 
 	if _, werr := w.Write(buf); werr != nil {
@@ -116,10 +138,13 @@ func streamChunk(result proto.Message, err error) map[string]proto.Message {
 	if err != nil {
 		grpcCode := codes.Unknown
 		grpcMessage := err.Error()
+
 		var grpcDetails []*types.Any
+
 		if s, ok := status.FromError(err); ok {
 			grpcCode = s.Code()
 			grpcMessage = s.Message()
+
 			if s.Proto() != nil {
 				grpcDetails = make([]*types.Any, len(s.Proto().GetDetails()))
 				for i, d := range s.Proto().GetDetails() {
@@ -130,7 +155,9 @@ func streamChunk(result proto.Message, err error) map[string]proto.Message {
 				}
 			}
 		}
+
 		httpCode := runtime.HTTPStatusFromCode(grpcCode)
+
 		return map[string]proto.Message{
 			"error": &StreamError{
 				GrpcCode:   int32(grpcCode),
@@ -141,8 +168,10 @@ func streamChunk(result proto.Message, err error) map[string]proto.Message {
 			},
 		}
 	}
+
 	if result == nil {
 		return streamChunk(nil, fmt.Errorf("empty response"))
 	}
+
 	return map[string]proto.Message{"result": result}
 }

@@ -47,7 +47,13 @@ type RegistryHandler struct {
 
 // Int64Measure establishes a new OpenCensus Integer Metric based on the provided information and registers
 // a configured stats.View.
-func (r *RegistryHandler) Int64Measure(name, description, unit string, tags []tag.Key, aggregate *view.Aggregation) *stats.Int64Measure {
+func (r *RegistryHandler) Int64Measure(
+	name,
+	description,
+	unit string,
+	tags []tag.Key,
+	aggregate *view.Aggregation,
+) *stats.Int64Measure {
 	if r.exists(name) {
 		r.log.Fatal("the provided metric name is already registered", zap.String("name", name))
 	}
@@ -71,7 +77,13 @@ func (r *RegistryHandler) Int64Measure(name, description, unit string, tags []ta
 
 // Float64Measure establishes a new OpenCensus Floating Point Metric based on the provided information and registers
 // a configured stats.View.
-func (r *RegistryHandler) Float64Measure(name, description, unit string, tags []tag.Key, aggregate *view.Aggregation) *stats.Float64Measure {
+func (r *RegistryHandler) Float64Measure(
+	name,
+	description,
+	unit string,
+	tags []tag.Key,
+	aggregate *view.Aggregation,
+) *stats.Float64Measure {
 	if r.exists(name) {
 		r.log.Fatal("the provided metric name is already registered", zap.String("name", name))
 	}
