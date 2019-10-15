@@ -2,7 +2,7 @@ package drudge
 
 import (
 	"context"
-	"log"
+	"fmt"
 	"net"
 	"net/http"
 	"time"
@@ -18,9 +18,8 @@ import (
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"go.opencensus.io/plugin/ocgrpc"
 	"go.opencensus.io/plugin/ochttp"
+	"go.uber.org/zap"
 	"google.golang.org/grpc"
-
-	"github.com/ninnemana/drudge/telemetry"
 )
 
 const (
@@ -57,26 +56,45 @@ type Options struct {
 
 	OnRegister func(server *grpc.Server) error
 
-	TraceExporter telemetry.TraceExporter
+	TraceExporter TraceExporter
 	TraceConfig   interface{}
+
+	Metrics *RegistryHandler
 }
 
 func Run(ctx context.Context, opts Options) error {
-	ctx, cancel := context.WithCancel(ctx)
-	defer cancel()
-
-	if opts.TraceExporter != nil {
-		flush, err := opts.TraceExporter(opts.TraceConfig)
-		if err != nil {
-			return errors.WithMessage(err, "failed to register trace exporter")
-		}
-		defer flush()
-	}
 
 	lg := initLogger(-1, time.RFC3339)
 	// Make sure that log statements internal to gRPC library are logged using the zapLogger as well.
 	grpc_zap.ReplaceGrpcLogger(lg)
-	grpc.EnableTracing = true
+
+	if opts.Metrics == nil {
+		opts.Metrics = &RegistryHandler{
+			log: lg,
+		}
+	}
+
+	var flush func()
+
+	if opts.TraceExporter != nil {
+		var err error
+
+		flush, err = opts.TraceExporter(opts.TraceConfig)
+		if err != nil {
+			return errors.WithMessage(err, "failed to register trace exporter")
+		}
+	}
+
+	ctx, cancel := context.WithCancel(ctx)
+
+	defer func() {
+		cancel()
+		flush()
+
+		if r := recover(); r != nil {
+			lg.Fatal("Recovered from fatal error", zap.Any("recovery", r))
+		}
+	}()
 
 	rpc := grpc.NewServer(
 		grpc_middleware.WithUnaryServerChain(
@@ -104,6 +122,8 @@ func Run(ctx context.Context, opts Options) error {
 		return errors.Wrap(err, "failed to register RPC service")
 	}
 
+	grpc.EnableTracing = true
+
 	grpc_prometheus.Register(rpc)
 
 	list, err := net.Listen("tcp", opts.RPC.Addr)
@@ -111,10 +131,9 @@ func Run(ctx context.Context, opts Options) error {
 		return errors.Wrap(err, "failed to open TCP connection")
 	}
 
-	log.Println("Serve gRPC on http://", opts.RPC.Addr)
-	go func() {
-		log.Fatal(errors.Wrap(rpc.Serve(list), "failed to serve gRPC"))
-	}()
+	lg.Info("Serve gRPC", zap.String("address", fmt.Sprintf("http://%s", opts.RPC.Addr)))
+
+	go lg.Fatal("failed to serve gRPC", zap.Error(rpc.Serve(list)))
 
 	conn, err := dial(ctx, opts.RPC.Network, opts.RPC.Addr)
 	if err != nil {
@@ -124,7 +143,7 @@ func Run(ctx context.Context, opts Options) error {
 	go func() {
 		<-ctx.Done()
 		if err := conn.Close(); err != nil {
-			log.Fatalf("Failed to close a client connection to the gRPC server: %v", err)
+			lg.Fatal("Failed to close a client connection to the gRPC server", zap.Error(err))
 		}
 	}()
 
@@ -134,31 +153,34 @@ func Run(ctx context.Context, opts Options) error {
 
 	// Register Prometheus metrics handler.
 	r.Handle("/metrics", promhttp.Handler())
-	r.Handle("/metrics/list", telemetry.RegistryHandler{})
+	r.Handle("/metrics/list", opts.Metrics)
 
 	gw, err := newGateway(ctx, conn, opts.Mux, opts.Handlers)
 	if err != nil {
 		return err
 	}
+
 	r.Handle("/", gw)
 
 	s := &http.Server{
 		Addr: opts.Addr,
 		Handler: &ochttp.Handler{
-			Handler: allowCORS(r),
+			Handler: allowCORS(lg, r),
 		},
 	}
+
 	go func() {
 		<-ctx.Done()
-		log.Println("shutting down the http server")
+		lg.Info("shutting down the http server")
 		if err := s.Shutdown(context.Background()); err != nil {
-			log.Fatalf("failed to shutdown http server: %v", err)
+			lg.Fatal("failed to shutdown http server", zap.Error(err))
 		}
 	}()
 
-	log.Printf("starting listening at %s\n", opts.Addr)
+	lg.Info("starting HTTP server", zap.String("address", opts.Addr))
+
 	if err := s.ListenAndServe(); err != http.ErrServerClosed {
-		log.Fatalf("failed to listen and serve: %v", err)
+		lg.Fatal("failed to listen and serve", zap.Error(err))
 		return err
 	}
 

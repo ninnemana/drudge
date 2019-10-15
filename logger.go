@@ -4,7 +4,7 @@ import (
 	"os"
 	"time"
 
-	"github.com/grpc-ecosystem/go-grpc-middleware/logging/zap"
+	grpc_zap "github.com/grpc-ecosystem/go-grpc-middleware/logging/zap"
 	"go.uber.org/zap"
 	"go.uber.org/zap/zapcore"
 	"google.golang.org/grpc/codes"
@@ -21,6 +21,7 @@ func codeToLevel(code codes.Code) zapcore.Level {
 		// It is DEBUG
 		return zap.DebugLevel
 	}
+
 	return grpc_zap.DefaultCodeToLevel(code)
 }
 
@@ -29,10 +30,6 @@ func customTimeEncoder(t time.Time, enc zapcore.PrimitiveArrayEncoder) {
 }
 
 // initLogger sets up uber's zap structured logger for logging our gRPC requests.
-//
-// TODO: discuss with the team how we want to handle this with the current decision
-// on utilizing zerolog directly: this seems to be the "recommended" solution for
-// zerolog in gRPC: https://github.com/rs/zerolog/issues/58
 func initLogger(lvl int, timeFormat string) *zap.Logger {
 	globalLevel := zapcore.Level(lvl)
 
@@ -50,14 +47,9 @@ func initLogger(lvl int, timeFormat string) *zap.Logger {
 	consoleInfos := zapcore.Lock(os.Stdout)
 	consoleErrors := zapcore.Lock(os.Stderr)
 
-	// Configure console output.
-	var useCustomTimeFormat bool
 	ecfg := zap.NewProductionEncoderConfig()
-	if len(timeFormat) > 0 {
-		customTimeFormat = timeFormat
-		ecfg.EncodeTime = customTimeEncoder
-		useCustomTimeFormat = true
-	}
+	ecfg.EncodeTime = customTimeEncoder
+
 	consoleEncoder := zapcore.NewJSONEncoder(ecfg)
 
 	// Join the outputs, encoders, and level-handling functions into
@@ -71,7 +63,7 @@ func initLogger(lvl int, timeFormat string) *zap.Logger {
 	lg := zap.New(core)
 	zap.RedirectStdLog(lg)
 
-	if !useCustomTimeFormat {
+	if len(timeFormat) == 0 {
 		lg.Warn("time format for logger is not provided - use zap default")
 	}
 
