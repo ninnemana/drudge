@@ -132,7 +132,9 @@ func Run(ctx context.Context, opts Options) error {
 
 	lg.Info("Serve gRPC", zap.String("address", fmt.Sprintf("http://%s", opts.RPC.Addr)))
 
-	go lg.Fatal("failed to serve gRPC", zap.Error(rpc.Serve(list)))
+	go func() {
+		lg.Fatal("failed to serve gRPC", zap.Error(rpc.Serve(list)))
+	}()
 
 	conn, err := dial(ctx, opts.RPC.Network, opts.RPC.Addr)
 	if err != nil {
