@@ -136,6 +136,7 @@ func Run(ctx context.Context, opts Options) error {
 		lg.Fatal("failed to serve gRPC", zap.Error(rpc.Serve(list)))
 	}()
 
+	lg.Info("Dialing RPC service connection", zap.String("address", opts.RPC.Addr), zap.String("network", opts.RPC.Network))
 	conn, err := dial(ctx, opts.RPC.Network, opts.RPC.Addr)
 	if err != nil {
 		return errors.Wrapf(err, "failed to create network connection for '%s' on '%s'", opts.RPC.Network, opts.RPC.Addr)
@@ -156,6 +157,7 @@ func Run(ctx context.Context, opts Options) error {
 	r.Handle("/metrics", promhttp.Handler())
 	r.Handle("/metrics/list", opts.Metrics)
 
+	lg.Info("Register gateway handlers")
 	gw, err := newGateway(ctx, conn, opts.Mux, opts.Handlers)
 	if err != nil {
 		return err
