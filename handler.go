@@ -5,14 +5,13 @@ import (
 	"path"
 	"strings"
 
-	"github.com/golang/glog"
 	"go.uber.org/zap"
 )
 
 // swaggerServer returns swagger specification files located under "/swagger/"
-func swaggerServer(dir string) http.HandlerFunc {
+func swaggerServer(lg *zap.Logger, dir string) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		glog.Infof("Serving %s", r.URL.Path)
+		lg.Info("Serving swagger", zap.String("path", r.URL.Path))
 		p := strings.TrimPrefix(r.URL.Path, "/openapi/")
 		p = path.Join(dir, p)
 		http.ServeFile(w, r, p)

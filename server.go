@@ -156,7 +156,7 @@ func Run(ctx context.Context, opts Options) error {
 
 	r := http.NewServeMux()
 
-	r.HandleFunc("/openapi/", swaggerServer(opts.SwaggerDir))
+	r.HandleFunc("/openapi/", swaggerServer(lg, opts.SwaggerDir))
 
 	// Register Prometheus metrics handler.
 	r.Handle("/metrics", promhttp.Handler())
