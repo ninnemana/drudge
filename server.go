@@ -14,6 +14,8 @@ import (
 	grpc_validator "github.com/grpc-ecosystem/go-grpc-middleware/validator"
 	grpc_prometheus "github.com/grpc-ecosystem/go-grpc-prometheus"
 	gwruntime "github.com/grpc-ecosystem/grpc-gateway/runtime"
+	"github.com/opentracing-contrib/go-stdlib/nethttp"
+	"github.com/opentracing/opentracing-go"
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"go.opencensus.io/plugin/ocgrpc"
@@ -154,6 +156,11 @@ func Run(ctx context.Context, opts Options) error {
 		}
 	}()
 
+	gw, err := newGateway(ctx, conn, opts.Mux, opts.Handlers)
+	if err != nil {
+		return err
+	}
+
 	r := http.NewServeMux()
 
 	r.HandleFunc("/openapi/", swaggerServer(lg, opts.SwaggerDir))
@@ -162,17 +169,16 @@ func Run(ctx context.Context, opts Options) error {
 	r.Handle("/metrics", promhttp.Handler())
 	r.Handle("/metrics/list", opts.Metrics)
 
-	gw, err := newGateway(ctx, conn, opts.Mux, opts.Handlers)
-	if err != nil {
-		return err
-	}
-
+	// must be registered last
 	r.Handle("/", gw)
 
 	s := &http.Server{
 		Addr: opts.Addr,
 		Handler: &ochttp.Handler{
-			Handler: allowCORS(lg, r),
+			Handler: nethttp.Middleware(
+				opentracing.GlobalTracer(),
+				allowCORS(lg, r),
+			),
 		},
 	}
 
