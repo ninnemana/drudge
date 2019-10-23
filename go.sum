@@ -86,6 +86,8 @@ github.com/ninnemana/grpc-gateway v1.11.4-0.20191023155740-7708925c4479 h1:0+b3C
 github.com/ninnemana/grpc-gateway v1.11.4-0.20191023155740-7708925c4479/go.mod h1:YpSYCJd6b04B9zFDheWn+AB/i4QSkkqDDipplh2754s=
 github.com/ninnemana/grpc-gateway v1.11.4-0.20191023174831-551da5450abc h1:qMJj82Od+JwYBXcco2++RYocY39pKN2r9h+5Of474dY=
 github.com/ninnemana/grpc-gateway v1.11.4-0.20191023174831-551da5450abc/go.mod h1:YpSYCJd6b04B9zFDheWn+AB/i4QSkkqDDipplh2754s=
+github.com/ninnemana/grpc-gateway v1.11.4-0.20191023181637-0b6d486203fd h1:5l/rfJdq53Tzs9e2fcF3oE0N0EgbBXgRRqwL/CJBBl4=
+github.com/ninnemana/grpc-gateway v1.11.4-0.20191023181637-0b6d486203fd/go.mod h1:YpSYCJd6b04B9zFDheWn+AB/i4QSkkqDDipplh2754s=
 github.com/opentracing-contrib/go-stdlib v0.0.0-20190519235532-cf7a6c988dc9 h1:QsgXACQhd9QJhEmRumbsMQQvBtmdS0mafoVEBplWXEg=
 github.com/opentracing-contrib/go-stdlib v0.0.0-20190519235532-cf7a6c988dc9/go.mod h1:PLldrQSroqzH70Xl+1DQcGnefIbqsKR7UDaiux3zV+w=
 github.com/opentracing/opentracing-go v1.1.0 h1:pWlfV3Bxv7k65HYwkikxat0+s3pV4bsqf19k25Ur8rU=
