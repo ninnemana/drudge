@@ -13,7 +13,7 @@ import (
 	grpc_opentracing "github.com/grpc-ecosystem/go-grpc-middleware/tracing/opentracing"
 	grpc_validator "github.com/grpc-ecosystem/go-grpc-middleware/validator"
 	grpc_prometheus "github.com/grpc-ecosystem/go-grpc-prometheus"
-	gwruntime "github.com/ninnemana/grpc-gateway/runtime"
+	gwruntime "github.com/grpc-ecosystem/grpc-gateway/runtime"
 	"github.com/opentracing-contrib/go-stdlib/nethttp"
 	"github.com/opentracing/opentracing-go"
 	"github.com/pkg/errors"

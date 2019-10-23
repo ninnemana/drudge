@@ -6,7 +6,7 @@ import (
 	"net"
 	"net/http"
 
-	gwruntime "github.com/ninnemana/grpc-gateway/runtime"
+	gwruntime "github.com/grpc-ecosystem/grpc-gateway/runtime"
 	"go.opencensus.io/plugin/ocgrpc"
 	"google.golang.org/grpc"
 )
