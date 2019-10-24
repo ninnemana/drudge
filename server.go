@@ -14,8 +14,8 @@ import (
 	grpc_validator "github.com/grpc-ecosystem/go-grpc-middleware/validator"
 	grpc_prometheus "github.com/grpc-ecosystem/go-grpc-prometheus"
 	gwruntime "github.com/grpc-ecosystem/grpc-gateway/runtime"
-	"github.com/opentracing-contrib/go-stdlib/nethttp"
 	"github.com/opentracing/opentracing-go"
+	"github.com/opentracing/opentracing-go/ext"
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"go.opencensus.io/plugin/ocgrpc"
@@ -175,13 +175,7 @@ func Run(ctx context.Context, opts Options) error {
 	s := &http.Server{
 		Addr: opts.Addr,
 		Handler: &ochttp.Handler{
-			Handler: nethttp.MiddlewareFunc(
-				opentracing.GlobalTracer(),
-				allowCORS(lg, r).ServeHTTP,
-				nethttp.OperationNameFunc(func(r *http.Request) string {
-					return fmt.Sprintf("HTTP-gRPC %s %s", r.Method, r.URL.String())
-				}),
-			),
+			Handler: tracingWrapper(allowCORS(lg, r)),
 		},
 	}
 
@@ -201,4 +195,25 @@ func Run(ctx context.Context, opts Options) error {
 	}
 
 	return nil
+}
+
+var drudgeTag = opentracing.Tag{Key: string(ext.Component), Value: "drudge"}
+
+func tracingWrapper(h http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		parentSpanContext, err := opentracing.GlobalTracer().Extract(
+			opentracing.HTTPHeaders,
+			opentracing.HTTPHeadersCarrier(r.Header))
+		if err == nil || err == opentracing.ErrSpanContextNotFound {
+			serverSpan := opentracing.GlobalTracer().StartSpan(
+				"ServeHTTP",
+				// this is magical, it attaches the new span to the parent parentSpanContext, and creates an unparented one if empty.
+				ext.RPCServerOption(parentSpanContext),
+				drudgeTag,
+			)
+			r = r.WithContext(opentracing.ContextWithSpan(r.Context(), serverSpan))
+			defer serverSpan.Finish()
+		}
+		h.ServeHTTP(w, r)
+	})
 }
