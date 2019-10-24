@@ -39,6 +39,11 @@ func dialTCP(ctx context.Context, addr string) (*grpc.ClientConn, error) {
 				grpc_opentracing.WithTracer(opentracing.GlobalTracer()),
 			),
 		),
+		grpc.WithStreamInterceptor(
+			grpc_opentracing.StreamClientInterceptor(
+				grpc_opentracing.WithTracer(opentracing.GlobalTracer()),
+			),
+		),
 	)
 }
 
@@ -57,6 +62,11 @@ func dialUnix(ctx context.Context, addr string) (*grpc.ClientConn, error) {
 		grpc.WithStatsHandler(&ocgrpc.ClientHandler{}),
 		grpc.WithUnaryInterceptor(
 			grpc_opentracing.UnaryClientInterceptor(
+				grpc_opentracing.WithTracer(opentracing.GlobalTracer()),
+			),
+		),
+		grpc.WithStreamInterceptor(
+			grpc_opentracing.StreamClientInterceptor(
 				grpc_opentracing.WithTracer(opentracing.GlobalTracer()),
 			),
 		),
