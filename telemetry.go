@@ -54,6 +54,8 @@ func Jaeger(c interface{}) (func(), error) {
 		}
 
 		conf = *cfg
+	default:
+		return nil, errors.Errorf("expected Jaeger config, received '%T'", c)
 	}
 
 	// Example logger and metrics factory. Use github.com/uber/jaeger-client-go/log
