@@ -55,6 +55,11 @@ func dialUnix(ctx context.Context, addr string) (*grpc.ClientConn, error) {
 		grpc.WithInsecure(),
 		grpc.WithContextDialer(d),
 		grpc.WithStatsHandler(&ocgrpc.ClientHandler{}),
+		grpc.WithUnaryInterceptor(
+			grpc_opentracing.UnaryClientInterceptor(
+				grpc_opentracing.WithTracer(opentracing.GlobalTracer()),
+			),
+		),
 	)
 }
 
