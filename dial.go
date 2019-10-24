@@ -6,7 +6,9 @@ import (
 	"net"
 	"net/http"
 
+	grpc_opentracing "github.com/grpc-ecosystem/go-grpc-middleware/tracing/opentracing"
 	gwruntime "github.com/grpc-ecosystem/grpc-gateway/runtime"
+	"github.com/opentracing/opentracing-go"
 	"go.opencensus.io/plugin/ocgrpc"
 	"google.golang.org/grpc"
 )
@@ -32,6 +34,11 @@ func dialTCP(ctx context.Context, addr string) (*grpc.ClientConn, error) {
 		addr,
 		grpc.WithInsecure(),
 		grpc.WithStatsHandler(&ocgrpc.ClientHandler{}),
+		grpc.WithUnaryInterceptor(
+			grpc_opentracing.UnaryClientInterceptor(
+				grpc_opentracing.WithTracer(opentracing.GlobalTracer()),
+			),
+		),
 	)
 }
 

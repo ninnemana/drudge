@@ -1,9 +1,6 @@
 package drudge
 
 import (
-	"time"
-
-	"contrib.go.opencensus.io/exporter/stackdriver"
 	"github.com/opentracing/opentracing-go"
 	"github.com/pkg/errors"
 	"github.com/uber/jaeger-client-go"
@@ -12,8 +9,6 @@ import (
 	"github.com/uber/jaeger-lib/metrics"
 	"go.opencensus.io/stats/view"
 	"go.opencensus.io/tag"
-	"go.opencensus.io/trace"
-	"google.golang.org/api/option"
 )
 
 var (
@@ -29,11 +24,11 @@ var (
 
 type TraceExporter func(interface{}) (func(), error)
 
-type StackDriverConfig struct {
-	ProjectID      string
-	Prefix         string
-	ServiceAccount string
-}
+// type StackDriverConfig struct {
+// 	ProjectID      string
+// 	Prefix         string
+// 	ServiceAccount string
+// }
 
 type JaegerConfig struct {
 	ServiceName string
@@ -80,35 +75,35 @@ func Jaeger(c interface{}) (func(), error) {
 }
 
 // StackDriver registers the StackDriver OpenCensus Exporter.
-func StackDriver(c interface{}) (func(), error) {
-	cfg, ok := c.(StackDriverConfig)
-	if !ok {
-		return nil, errors.Errorf("expected '%T', received '%T' as configuration", StackDriverConfig{}, c)
-	}
+// func StackDriver(c interface{}) (func(), error) {
+// 	cfg, ok := c.(StackDriverConfig)
+// 	if !ok {
+// 		return nil, errors.Errorf("expected '%T', received '%T' as configuration", StackDriverConfig{}, c)
+// 	}
 
-	opt := []option.ClientOption{
-		option.WithCredentialsJSON([]byte(cfg.ServiceAccount)),
-	}
+// 	opt := []option.ClientOption{
+// 		option.WithCredentialsJSON([]byte(cfg.ServiceAccount)),
+// 	}
 
-	sd, err := stackdriver.NewExporter(stackdriver.Options{
-		ProjectID: cfg.ProjectID,
-		// MetricPrefix helps uniquely identify your metrics.
-		MetricPrefix:            cfg.Prefix,
-		Location:                "k8s_container",
-		MonitoringClientOptions: opt,
-		TraceClientOptions:      opt,
-	})
-	if err != nil {
-		return nil, errors.Wrap(err, "failed to create stats exporter")
-	}
+// 	sd, err := stackdriver.NewExporter(stackdriver.Options{
+// 		ProjectID: cfg.ProjectID,
+// 		// MetricPrefix helps uniquely identify your metrics.
+// 		MetricPrefix:            cfg.Prefix,
+// 		Location:                "k8s_container",
+// 		MonitoringClientOptions: opt,
+// 		TraceClientOptions:      opt,
+// 	})
+// 	if err != nil {
+// 		return nil, errors.Wrap(err, "failed to create stats exporter")
+// 	}
 
-	// Register it as a metrics exporter
-	view.RegisterExporter(sd)
-	view.SetReportingPeriod(60 * time.Second)
+// 	// Register it as a metrics exporter
+// 	view.RegisterExporter(sd)
+// 	view.SetReportingPeriod(60 * time.Second)
 
-	// Register it as a trace exporter
-	trace.RegisterExporter(sd)
-	trace.ApplyConfig(trace.Config{DefaultSampler: trace.AlwaysSample()})
+// 	// Register it as a trace exporter
+// 	trace.RegisterExporter(sd)
+// 	trace.ApplyConfig(trace.Config{DefaultSampler: trace.AlwaysSample()})
 
-	return sd.Flush, nil
-}
+// 	return sd.Flush, nil
+// }
