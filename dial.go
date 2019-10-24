@@ -7,6 +7,7 @@ import (
 	"net/http"
 
 	grpc_opentracing "github.com/grpc-ecosystem/go-grpc-middleware/tracing/opentracing"
+	grpc_prometheus "github.com/grpc-ecosystem/go-grpc-prometheus"
 	gwruntime "github.com/grpc-ecosystem/grpc-gateway/runtime"
 	"github.com/opentracing/opentracing-go"
 	"go.opencensus.io/plugin/ocgrpc"
@@ -65,6 +66,8 @@ func dialUnix(ctx context.Context, addr string) (*grpc.ClientConn, error) {
 				grpc_opentracing.WithTracer(opentracing.GlobalTracer()),
 			),
 		),
+		grpc.WithUnaryInterceptor(grpc_prometheus.UnaryClientInterceptor),
+		grpc.WithStreamInterceptor(grpc_prometheus.StreamClientInterceptor),
 		grpc.WithStreamInterceptor(
 			grpc_opentracing.StreamClientInterceptor(
 				grpc_opentracing.WithTracer(opentracing.GlobalTracer()),
