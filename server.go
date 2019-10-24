@@ -175,9 +175,12 @@ func Run(ctx context.Context, opts Options) error {
 	s := &http.Server{
 		Addr: opts.Addr,
 		Handler: &ochttp.Handler{
-			Handler: nethttp.Middleware(
+			Handler: nethttp.MiddlewareFunc(
 				opentracing.GlobalTracer(),
-				allowCORS(lg, r),
+				allowCORS(lg, r).ServeHTTP,
+				nethttp.OperationNameFunc(func(r *http.Request) string {
+					return fmt.Sprintf("HTTP-gRPC %s %s", r.Method, r.URL.String())
+				}),
 			),
 		},
 	}
