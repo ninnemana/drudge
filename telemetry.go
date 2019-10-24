@@ -6,7 +6,7 @@ import (
 	"github.com/uber/jaeger-client-go"
 	jaegercfg "github.com/uber/jaeger-client-go/config"
 	jaegerlog "github.com/uber/jaeger-client-go/log"
-	"github.com/uber/jaeger-lib/metrics"
+	"github.com/uber/jaeger-lib/metrics/prometheus"
 	"go.opencensus.io/stats/view"
 	"go.opencensus.io/tag"
 )
@@ -35,32 +35,36 @@ type JaegerConfig struct {
 }
 
 func Jaeger(c interface{}) (func(), error) {
-	conf, ok := c.(JaegerConfig)
-	if !ok {
-		return nil, errors.Errorf("expected '%T', received '%T' as configuration", JaegerConfig{}, c)
-	}
+	var conf jaegercfg.Configuration
+	switch cfg := c.(type) {
+	case JaegerConfig:
+		conf = jaegercfg.Configuration{
+			ServiceName: cfg.ServiceName,
+			Sampler: &jaegercfg.SamplerConfig{
+				Type:  jaeger.SamplerTypeConst,
+				Param: 1,
+			},
+			Reporter: &jaegercfg.ReporterConfig{
+				LogSpans: true,
+			},
+		}
+	case *jaegercfg.Configuration:
+		if cfg == nil {
+			return nil, errors.New("configuration was nil")
+		}
 
-	cfg := jaegercfg.Configuration{
-		ServiceName: conf.ServiceName,
-		Sampler: &jaegercfg.SamplerConfig{
-			Type:  jaeger.SamplerTypeConst,
-			Param: 1,
-		},
-		Reporter: &jaegercfg.ReporterConfig{
-			LogSpans: true,
-		},
+		conf = *cfg
 	}
 
 	// Example logger and metrics factory. Use github.com/uber/jaeger-client-go/log
 	// and github.com/uber/jaeger-lib/metrics respectively to bind to real logging and metrics
 	// frameworks.
 	jLogger := jaegerlog.StdLogger
-	jMetricsFactory := metrics.NullFactory
 
 	// Initialize tracer with a logger and a metrics factory
-	tracer, closer, err := cfg.NewTracer(
+	tracer, closer, err := conf.NewTracer(
 		jaegercfg.Logger(jLogger),
-		jaegercfg.Metrics(jMetricsFactory),
+		jaegercfg.Metrics(prometheus.New()),
 	)
 	if err != nil {
 		return nil, errors.WithMessage(err, "failed to create tracer")
