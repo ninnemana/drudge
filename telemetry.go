@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"net/http"
 
+	jaegercensus "contrib.go.opencensus.io/exporter/jaeger"
 	"github.com/opentracing/opentracing-go"
 	"github.com/opentracing/opentracing-go/ext"
 	"github.com/pkg/errors"
@@ -13,6 +14,7 @@ import (
 	"github.com/uber/jaeger-lib/metrics/prometheus"
 	"go.opencensus.io/stats/view"
 	"go.opencensus.io/tag"
+	"go.opencensus.io/trace"
 )
 
 var (
@@ -73,6 +75,15 @@ func Jaeger(c interface{}) (func(), error) {
 	// Set the singleton opentracing.Tracer with the Jaeger tracer.
 	opentracing.SetGlobalTracer(tracer)
 
+	je, err := jaegercensus.NewExporter(jaegercensus.Options{
+		ServiceName: conf.ServiceName,
+	})
+	if err != nil {
+		return nil, errors.WithMessage(err, "failed to create the Jaeger exporter")
+	}
+
+	trace.RegisterExporter(je)
+
 	return func() {
 		_ = closer.Close()
 	}, nil
@@ -87,19 +98,26 @@ func tracingWrapper(h http.Handler) http.Handler {
 			return
 		}
 
+		spanName := fmt.Sprintf("http.%s.[%s]", r.Method, r.URL.Path)
+
 		parentSpanContext, err := opentracing.GlobalTracer().Extract(
 			opentracing.HTTPHeaders,
 			opentracing.HTTPHeadersCarrier(r.Header),
 		)
 		if err == nil || err == opentracing.ErrSpanContextNotFound {
 			serverSpan := opentracing.GlobalTracer().StartSpan(
-				fmt.Sprintf("http.%s.[%s]", r.Method, r.URL.Path),
+				spanName,
 				ext.RPCServerOption(parentSpanContext),
 				drudgeTag,
 			)
 			r = r.WithContext(opentracing.ContextWithSpan(r.Context(), serverSpan))
 			defer serverSpan.Finish()
 		}
+
+		ctx, span := trace.StartSpan(r.Context(), spanName)
+		defer span.End()
+		r = r.WithContext(ctx)
+
 		h.ServeHTTP(w, r)
 	})
 }
