@@ -3,6 +3,7 @@ package drudge
 import (
 	"fmt"
 	"net/http"
+	"time"
 
 	jaegercensus "contrib.go.opencensus.io/exporter/jaeger"
 	"github.com/opentracing/opentracing-go"
@@ -12,6 +13,7 @@ import (
 	jaegercfg "github.com/uber/jaeger-client-go/config"
 	jaegerlog "github.com/uber/jaeger-client-go/log"
 	"github.com/uber/jaeger-lib/metrics/prometheus"
+	"go.opencensus.io/plugin/ocgrpc"
 	"go.opencensus.io/stats/view"
 	"go.opencensus.io/tag"
 	"go.opencensus.io/trace"
@@ -88,6 +90,14 @@ func Jaeger(c interface{}) (func(), error) {
 	}
 
 	trace.RegisterExporter(je)
+	trace.ApplyConfig(trace.Config{DefaultSampler: trace.AlwaysSample()})
+
+	// Register the views to collect server request count.
+	if err := view.Register(ocgrpc.DefaultServerViews...); err != nil {
+		return nil, errors.WithMessage(err, "failed to register server metric views")
+	}
+
+	view.SetReportingPeriod(1 * time.Second)
 
 	return func() {
 		_ = closer.Close()
