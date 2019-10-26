@@ -35,6 +35,8 @@ type JaegerConfig struct {
 }
 
 func Jaeger(c interface{}) (func(), error) {
+	jaegerOpts := jaegercensus.Options{}
+
 	var conf jaegercfg.Configuration
 	switch cfg := c.(type) {
 	case JaegerConfig:
@@ -48,12 +50,16 @@ func Jaeger(c interface{}) (func(), error) {
 				LogSpans: true,
 			},
 		}
+		jaegerOpts.ServiceName = conf.ServiceName
 	case *jaegercfg.Configuration:
 		if cfg == nil {
 			return nil, errors.New("configuration was nil")
 		}
 
 		conf = *cfg
+		jaegerOpts.ServiceName = cfg.ServiceName
+		jaegerOpts.AgentEndpoint = cfg.Reporter.LocalAgentHostPort
+		jaegerOpts.CollectorEndpoint = cfg.Reporter.CollectorEndpoint
 	default:
 		return nil, errors.Errorf("expected Jaeger config, received '%T'", c)
 	}
@@ -75,9 +81,7 @@ func Jaeger(c interface{}) (func(), error) {
 	// Set the singleton opentracing.Tracer with the Jaeger tracer.
 	opentracing.SetGlobalTracer(tracer)
 
-	je, err := jaegercensus.NewExporter(jaegercensus.Options{
-		ServiceName: conf.ServiceName,
-	})
+	je, err := jaegercensus.NewExporter(jaegerOpts)
 	if err != nil {
 		return nil, errors.WithMessage(err, "failed to create the Jaeger exporter")
 	}
