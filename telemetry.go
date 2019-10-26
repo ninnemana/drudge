@@ -81,7 +81,8 @@ func Jaeger(c interface{}) (func(), error) {
 	}
 
 	// Set the singleton opentracing.Tracer with the Jaeger tracer.
-	opentracing.SetGlobalTracer(tracer)
+	// opentracing.SetGlobalTracer(tracer)
+	_ = tracer
 
 	je, err := jaegercensus.NewExporter(jaegerOpts)
 	if err != nil {
