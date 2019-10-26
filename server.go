@@ -15,7 +15,6 @@ import (
 	grpc_prometheus "github.com/grpc-ecosystem/go-grpc-prometheus"
 	gwruntime "github.com/grpc-ecosystem/grpc-gateway/runtime"
 	"github.com/opentracing/opentracing-go"
-	"github.com/opentracing/opentracing-go/ext"
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"go.opencensus.io/plugin/ocgrpc"
@@ -195,24 +194,4 @@ func Run(ctx context.Context, opts Options) error {
 	}
 
 	return nil
-}
-
-var drudgeTag = opentracing.Tag{Key: string(ext.Component), Value: "drudge"}
-
-func tracingWrapper(h http.Handler) http.Handler {
-	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		parentSpanContext, err := opentracing.GlobalTracer().Extract(
-			opentracing.HTTPHeaders,
-			opentracing.HTTPHeadersCarrier(r.Header))
-		if err == nil || err == opentracing.ErrSpanContextNotFound {
-			serverSpan := opentracing.GlobalTracer().StartSpan(
-				fmt.Sprintf("http.%s.[%s]", r.Method, r.URL.Path),
-				ext.RPCServerOption(parentSpanContext),
-				drudgeTag,
-			)
-			r = r.WithContext(opentracing.ContextWithSpan(r.Context(), serverSpan))
-			defer serverSpan.Finish()
-		}
-		h.ServeHTTP(w, r)
-	})
 }
