@@ -88,8 +88,13 @@ func Run(ctx context.Context, opts Options) error {
 	ctx, cancel := context.WithCancel(ctx)
 
 	defer func() {
-		cancel()
-		flush()
+		if cancel != nil {
+			cancel()
+		}
+
+		if flush != nil {
+			flush()
+		}
 
 		if r := recover(); r != nil {
 			lg.Fatal("Recovered from fatal error", zap.Any("recovery", r))
