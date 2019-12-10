@@ -61,6 +61,10 @@ type Options struct {
 	TraceConfig   interface{}
 
 	Metrics *RegistryHandler
+
+	UnaryInterceptors []grpc.UnaryServerInterceptor
+
+	StreamInterceptors []grpc.StreamServerInterceptor
 }
 
 func Run(ctx context.Context, opts Options) error {
@@ -101,21 +105,49 @@ func Run(ctx context.Context, opts Options) error {
 		}
 	}()
 
-	rpc := grpc.NewServer(
-		grpc_middleware.WithUnaryServerChain(
+	switch len(opts.UnaryInterceptors) {
+	case 0:
+		opts.UnaryInterceptors = []grpc.UnaryServerInterceptor{
 			grpc_validator.UnaryServerInterceptor(),
 			grpc_opentracing.UnaryServerInterceptor(grpc_opentracing.WithTracer(opentracing.GlobalTracer())),
 			grpc_ctxtags.UnaryServerInterceptor(grpc_ctxtags.WithFieldExtractor(grpc_ctxtags.CodeGenRequestFieldExtractor)),
 			grpc_zap.UnaryServerInterceptor(lg, grpc_zap.WithLevels(codeToLevel)),
 			grpc_prometheus.UnaryServerInterceptor,
-		),
-		grpc_middleware.WithStreamServerChain(
+		}
+	default:
+		opts.UnaryInterceptors = append(
+			opts.UnaryInterceptors,
+			grpc_validator.UnaryServerInterceptor(),
+			grpc_opentracing.UnaryServerInterceptor(grpc_opentracing.WithTracer(opentracing.GlobalTracer())),
+			grpc_ctxtags.UnaryServerInterceptor(grpc_ctxtags.WithFieldExtractor(grpc_ctxtags.CodeGenRequestFieldExtractor)),
+			grpc_zap.UnaryServerInterceptor(lg, grpc_zap.WithLevels(codeToLevel)),
+			grpc_prometheus.UnaryServerInterceptor,
+		)
+	}
+
+	switch len(opts.StreamInterceptors) {
+	case 0:
+		opts.StreamInterceptors = []grpc.StreamServerInterceptor{
 			grpc_validator.StreamServerInterceptor(),
 			grpc_opentracing.StreamServerInterceptor(grpc_opentracing.WithTracer(opentracing.GlobalTracer())),
 			grpc_ctxtags.StreamServerInterceptor(grpc_ctxtags.WithFieldExtractor(grpc_ctxtags.CodeGenRequestFieldExtractor)),
 			grpc_zap.StreamServerInterceptor(lg, grpc_zap.WithLevels(codeToLevel)),
 			grpc_prometheus.StreamServerInterceptor,
-		),
+		}
+	default:
+		opts.StreamInterceptors = append(
+			opts.StreamInterceptors,
+			grpc_validator.StreamServerInterceptor(),
+			grpc_opentracing.StreamServerInterceptor(grpc_opentracing.WithTracer(opentracing.GlobalTracer())),
+			grpc_ctxtags.StreamServerInterceptor(grpc_ctxtags.WithFieldExtractor(grpc_ctxtags.CodeGenRequestFieldExtractor)),
+			grpc_zap.StreamServerInterceptor(lg, grpc_zap.WithLevels(codeToLevel)),
+			grpc_prometheus.StreamServerInterceptor,
+		)
+	}
+
+	rpc := grpc.NewServer(
+		grpc_middleware.WithUnaryServerChain(opts.UnaryInterceptors...),
+		grpc_middleware.WithStreamServerChain(opts.StreamInterceptors...),
 		grpc.StatsHandler(&ocgrpc.ServerHandler{}),
 	)
 
