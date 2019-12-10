@@ -45,6 +45,7 @@ func dialTCP(ctx context.Context, addr string) (*grpc.ClientConn, error) {
 				grpc_opentracing.WithTracer(opentracing.GlobalTracer()),
 			),
 		),
+		grpc.WithPerRPCCredentials(&Authentication{}),
 	)
 }
 
