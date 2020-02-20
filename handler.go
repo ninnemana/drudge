@@ -27,6 +27,7 @@ func allowCORS(lg *zap.Logger, rest, rpc http.Handler) http.Handler {
 		if r.ProtoMajor == 2 && strings.Contains(r.Header.Get("Content-Type"), "application/grpc") {
 			rpc.ServeHTTP(w, r)
 		} else {
+			lg.Info("routing to HTTP", zap.String("referer", r.URL.String()))
 			if origin := r.Header.Get("Origin"); origin != "" {
 				w.Header().Set("Access-Control-Allow-Origin", origin)
 				if r.Method == "OPTIONS" && r.Header.Get("Access-Control-Request-Method") != "" {
