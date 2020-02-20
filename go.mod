@@ -20,7 +20,7 @@ require (
 	github.com/uber/jaeger-lib v2.2.0+incompatible
 	go.opencensus.io v0.21.0
 	go.uber.org/zap v1.10.0
-	golang.org/x/net v0.0.0-20191002035440-2ec189313ef0 // indirect
+	golang.org/x/net v0.0.0-20191002035440-2ec189313ef0
 	golang.org/x/sys v0.0.0-20191010194322-b09406accb47 // indirect
 	golang.org/x/text v0.3.2 // indirect
 	google.golang.org/genproto v0.0.0-20190927181202-20e1ac93f88c // indirect

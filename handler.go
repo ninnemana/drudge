@@ -6,6 +6,8 @@ import (
 	"strings"
 
 	"go.uber.org/zap"
+	"golang.org/x/net/http2"
+	"golang.org/x/net/http2/h2c"
 )
 
 // swaggerServer returns swagger specification files located under "/swagger/"
@@ -21,22 +23,20 @@ func swaggerServer(lg *zap.Logger, dir string) http.HandlerFunc {
 // allowCORS allows Cross Origin Resoruce Sharing from any origin.
 // Don't do this without consideration in production systems.
 func allowCORS(lg *zap.Logger, rest, rpc http.Handler) http.Handler {
-	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		ct := r.Header.Get("Content-Type")
-		if r.ProtoMajor == 2 && strings.Contains(ct, "application/grpc") {
+	return h2c.NewHandler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.ProtoMajor == 2 && strings.Contains(r.Header.Get("Content-Type"), "application/grpc") {
 			rpc.ServeHTTP(w, r)
-			return
-		}
-
-		if origin := r.Header.Get("Origin"); origin != "" {
-			w.Header().Set("Access-Control-Allow-Origin", origin)
-			if r.Method == "OPTIONS" && r.Header.Get("Access-Control-Request-Method") != "" {
-				preflightHandler(lg, w, r)
-				return
+		} else {
+			if origin := r.Header.Get("Origin"); origin != "" {
+				w.Header().Set("Access-Control-Allow-Origin", origin)
+				if r.Method == "OPTIONS" && r.Header.Get("Access-Control-Request-Method") != "" {
+					preflightHandler(lg, w, r)
+					return
+				}
 			}
+			rest.ServeHTTP(w, r)
 		}
-		rest.ServeHTTP(w, r)
-	})
+	}), &http2.Server{})
 }
 
 // preflightHandler adds the necessary headers in order to serve
