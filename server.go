@@ -2,8 +2,6 @@ package drudge
 
 import (
 	"context"
-	"fmt"
-	"net"
 	"net/http"
 	"time"
 
@@ -44,9 +42,6 @@ type Options struct {
 
 	// GRPCServer defines an endpoint of a gRPC service
 	RPC Endpoint
-
-	// Defines the RPC Clients to pass requests through
-	Handlers []Handler
 
 	// SwaggerDir is a path to a directory from which the server
 	// serves swagger specs.
@@ -131,40 +126,6 @@ func Run(ctx context.Context, opts Options) error {
 
 	grpc_prometheus.Register(rpc)
 
-	list, err := net.Listen("tcp", opts.RPC.Addr)
-	if err != nil {
-		return errors.Wrap(err, "failed to open TCP connection")
-	}
-
-	lg.Info("Serve gRPC", zap.String("address", fmt.Sprintf("http://%s", opts.RPC.Addr)))
-
-	go func() {
-		lg.Fatal("failed to serve gRPC", zap.Error(rpc.Serve(list)))
-	}()
-
-	lg.Info(
-		"Dialing RPC service connection",
-		zap.String("address", opts.RPC.Addr),
-		zap.String("network", opts.RPC.Network),
-	)
-
-	conn, err := dial(ctx, opts.RPC.Network, opts.RPC.Addr)
-	if err != nil {
-		return errors.Wrapf(err, "failed to create network connection for '%s' on '%s'", opts.RPC.Network, opts.RPC.Addr)
-	}
-
-	go func() {
-		<-ctx.Done()
-		if err := conn.Close(); err != nil {
-			lg.Fatal("Failed to close a client connection to the gRPC server", zap.Error(err))
-		}
-	}()
-
-	gw, err := newGateway(ctx, conn, opts.Mux, opts.Handlers)
-	if err != nil {
-		return err
-	}
-
 	r := http.NewServeMux()
 
 	r.HandleFunc("/openapi/", swaggerServer(lg, opts.SwaggerDir))
@@ -173,19 +134,17 @@ func Run(ctx context.Context, opts Options) error {
 	r.Handle("/metrics", promhttp.Handler())
 	r.Handle("/metrics/list", opts.Metrics)
 
-	// must be registered last
-	r.Handle("/", gw)
-
 	s := &http.Server{
 		Addr: opts.Addr,
 		Handler: &ochttp.Handler{
-			Handler: tracingWrapper(allowCORS(lg, r)),
+			Handler: tracingWrapper(allowCORS(lg, r, rpc)),
 		},
 	}
 
 	go func() {
 		<-ctx.Done()
 		lg.Info("shutting down the http server")
+
 		if err := s.Shutdown(context.Background()); err != nil {
 			lg.Fatal("failed to shutdown http server", zap.Error(err))
 		}

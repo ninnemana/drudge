@@ -20,8 +20,14 @@ func swaggerServer(lg *zap.Logger, dir string) http.HandlerFunc {
 
 // allowCORS allows Cross Origin Resoruce Sharing from any origin.
 // Don't do this without consideration in production systems.
-func allowCORS(lg *zap.Logger, h http.Handler) http.Handler {
+func allowCORS(lg *zap.Logger, rest, rpc http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		ct := r.Header.Get("Content-Type")
+		if r.ProtoMajor == 2 && strings.Contains(ct, "application/grpc") {
+			rpc.ServeHTTP(w, r)
+			return
+		}
+
 		if origin := r.Header.Get("Origin"); origin != "" {
 			w.Header().Set("Access-Control-Allow-Origin", origin)
 			if r.Method == "OPTIONS" && r.Header.Get("Access-Control-Request-Method") != "" {
@@ -29,7 +35,7 @@ func allowCORS(lg *zap.Logger, h http.Handler) http.Handler {
 				return
 			}
 		}
-		h.ServeHTTP(w, r)
+		rest.ServeHTTP(w, r)
 	})
 }
 
