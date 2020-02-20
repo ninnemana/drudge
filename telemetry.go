@@ -17,6 +17,8 @@ import (
 	"go.opencensus.io/stats/view"
 	"go.opencensus.io/tag"
 	"go.opencensus.io/trace"
+	"golang.org/x/net/http2"
+	"golang.org/x/net/http2/h2c"
 )
 
 var (
@@ -107,7 +109,7 @@ func Jaeger(c interface{}) (func(), error) {
 var drudgeTag = opentracing.Tag{Key: string(ext.Component), Value: "drudge"}
 
 func tracingWrapper(h http.Handler) http.Handler {
-	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	return h2c.NewHandler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path == "/metrics" {
 			h.ServeHTTP(w, r)
 			return
@@ -134,5 +136,5 @@ func tracingWrapper(h http.Handler) http.Handler {
 		r = r.WithContext(ctx)
 
 		h.ServeHTTP(w, r)
-	})
+	}), &http2.Server{})
 }
