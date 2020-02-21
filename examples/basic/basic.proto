@@ -1,0 +1,27 @@
+syntax = "proto3";
+package echo;
+
+import "gogoproto/gogo.proto";
+import "google/api/annotations.proto";
+import "protoc-gen-swagger/options/annotations.proto";
+
+option (gogoproto.protosizer_all) = true;
+option (gogoproto.sizer_all) = false;
+option go_package = "echo";
+
+
+message GetParams {
+	string msg = 1;
+}
+
+message Response {
+	string msg = 1;
+}
+
+service Echo {
+	rpc Hello(GetParams) returns (Response) {
+		option (google.api.http) = {
+			get: "/hello";
+		};
+	}
+}
