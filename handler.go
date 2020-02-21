@@ -8,6 +8,7 @@ import (
 	"go.uber.org/zap"
 	"golang.org/x/net/http2"
 	"golang.org/x/net/http2/h2c"
+	"google.golang.org/grpc"
 )
 
 // swaggerServer returns swagger specification files located under "/swagger/"
@@ -22,7 +23,7 @@ func swaggerServer(lg *zap.Logger, dir string) http.HandlerFunc {
 
 // allowCORS allows Cross Origin Resoruce Sharing from any origin.
 // Don't do this without consideration in production systems.
-func allowCORS(lg *zap.Logger, rest, rpc http.Handler) http.Handler {
+func allowCORS(lg *zap.Logger, rest http.Handler, rpc *grpc.Server) http.Handler {
 	return h2c.NewHandler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.ProtoMajor == 2 && strings.Contains(r.Header.Get("Content-Type"), "application/grpc") {
 			rpc.ServeHTTP(w, r)
