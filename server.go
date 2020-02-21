@@ -11,14 +11,14 @@ import (
 	grpc_opentracing "github.com/grpc-ecosystem/go-grpc-middleware/tracing/opentracing"
 	grpc_validator "github.com/grpc-ecosystem/go-grpc-middleware/validator"
 	grpc_prometheus "github.com/grpc-ecosystem/go-grpc-prometheus"
+	"github.com/grpc-ecosystem/grpc-gateway/runtime"
 	gwruntime "github.com/grpc-ecosystem/grpc-gateway/runtime"
 	"github.com/opentracing/opentracing-go"
 	"github.com/pkg/errors"
-	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"go.opencensus.io/plugin/ocgrpc"
-	"go.opencensus.io/plugin/ochttp"
 	"go.uber.org/zap"
 	"google.golang.org/grpc"
+	"google.golang.org/grpc/credentials"
 )
 
 const (
@@ -50,12 +50,15 @@ type Options struct {
 	// Mux is a list of options to be passed to the grpc-gateway multiplexer
 	Mux []gwruntime.ServeMuxOption
 
-	OnRegister func(server *grpc.Server) error
+	OnRegister func(server *grpc.Server, router *runtime.ServeMux, conn *grpc.ClientConn) error
 
 	TraceExporter TraceExporter
 	TraceConfig   interface{}
 
 	Metrics *RegistryHandler
+
+	Certificate    string
+	CertificateKey string
 }
 
 func Run(ctx context.Context, opts Options) error {
@@ -96,6 +99,11 @@ func Run(ctx context.Context, opts Options) error {
 		}
 	}()
 
+	serverCert, err := credentials.NewServerTLSFromFile(opts.Certificate, opts.CertificateKey)
+	if err != nil {
+		return errors.Wrap(err, "failed to create server TLS credentials")
+	}
+
 	rpc := grpc.NewServer(
 		grpc_middleware.WithUnaryServerChain(
 			grpc_validator.UnaryServerInterceptor(),
@@ -112,50 +120,37 @@ func Run(ctx context.Context, opts Options) error {
 			grpc_prometheus.StreamServerInterceptor,
 		),
 		grpc.StatsHandler(&ocgrpc.ServerHandler{}),
+		grpc.Creds(serverCert),
 	)
+
+	grpc.EnableTracing = true
+	grpc_prometheus.Register(rpc)
+
+	clientCert, err := credentials.NewClientTLSFromFile(opts.Certificate, "")
+	if err != nil {
+		return errors.Wrapf(err, "failed to create client TLS credentials")
+	}
+
+	conn, err := grpc.DialContext(
+		context.Background(),
+		"localhost:8080",
+		grpc.WithTransportCredentials(clientCert),
+	)
+	if err != nil {
+		return err
+	}
 
 	if opts.OnRegister == nil {
 		return errors.New("no register callback was defined, this is required for registering the RPC server")
 	}
 
-	if err := opts.OnRegister(rpc); err != nil {
+	router := runtime.NewServeMux()
+	if err := opts.OnRegister(rpc, router, conn); err != nil {
 		return errors.Wrap(err, "failed to register RPC service")
 	}
 
-	grpc.EnableTracing = true
-
-	grpc_prometheus.Register(rpc)
-
-	r := http.NewServeMux()
-
-	r.HandleFunc("/openapi/", swaggerServer(lg, opts.SwaggerDir))
-
-	// Register Prometheus metrics handler.
-	r.Handle("/metrics", promhttp.Handler())
-	r.Handle("/metrics/list", opts.Metrics)
-
-	s := &http.Server{
-		Addr: opts.Addr,
-		Handler: &ochttp.Handler{
-			Handler: tracingWrapper(allowCORS(lg, r, rpc)),
-		},
-	}
-
-	go func() {
-		<-ctx.Done()
-		lg.Info("shutting down the http server")
-
-		if err := s.Shutdown(context.Background()); err != nil {
-			lg.Fatal("failed to shutdown http server", zap.Error(err))
-		}
-	}()
-
-	lg.Info("starting HTTP server", zap.String("address", opts.Addr))
-
-	if err := s.ListenAndServe(); err != http.ErrServerClosed {
-		lg.Fatal("failed to listen and serve", zap.Error(err))
-		return err
-	}
-
-	return nil
+	return errors.Wrap(
+		http.ListenAndServeTLS(":8080", opts.Certificate, opts.CertificateKey, tracingWrapper(allowCORS(lg, router, rpc))),
+		"failed to start HTTP server",
+	)
 }
