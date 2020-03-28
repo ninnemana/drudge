@@ -106,12 +106,12 @@ func Run(ctx context.Context, opts Options) error {
 	}()
 
 	rpc := grpc.NewServer(
-		grpc.UnaryInterceptor(opts.UnaryServerInterceptor),
 		grpc_middleware.WithUnaryServerChain(
 			grpc_validator.UnaryServerInterceptor(),
 			grpc_ctxtags.UnaryServerInterceptor(grpc_ctxtags.WithFieldExtractor(grpc_ctxtags.CodeGenRequestFieldExtractor)),
 			grpc_zap.UnaryServerInterceptor(lg, grpc_zap.WithLevels(codeToLevel)),
 			grpc_prometheus.UnaryServerInterceptor,
+			opts.UnaryServerInterceptor,
 		),
 		grpc_middleware.WithStreamServerChain(
 			grpc_validator.StreamServerInterceptor(),
