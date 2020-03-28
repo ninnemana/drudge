@@ -21,9 +21,6 @@ import (
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"go.opencensus.io/plugin/ocgrpc"
 	"go.opencensus.io/plugin/ochttp"
-	"go.opentelemetry.io/otel/api/global"
-	"go.opentelemetry.io/otel/exporters/trace/stdout"
-	sdktrace "go.opentelemetry.io/otel/sdk/trace"
 	"go.uber.org/zap"
 	"google.golang.org/grpc"
 )
@@ -64,7 +61,6 @@ type Options struct {
 
 	// TraceExporter TraceExporter
 	ServiceName string
-	TraceConfig interface{}
 
 	Metrics *RegistryHandler
 }
@@ -79,19 +75,6 @@ func Run(ctx context.Context, opts Options) error {
 			log: lg,
 		}
 	}
-
-	exporter, err := stdout.NewExporter(stdout.Options{PrettyPrint: true})
-	if err != nil {
-		lg.Fatal("failed to create trace exporter", zap.Error(err))
-	}
-	tp, err := sdktrace.NewProvider(
-		sdktrace.WithConfig(sdktrace.Config{DefaultSampler: sdktrace.AlwaysSample()}),
-		sdktrace.WithSyncer(exporter),
-	)
-	if err != nil {
-		lg.Fatal("failed to create trace provider", zap.Error(err))
-	}
-	global.SetTraceProvider(tp)
 
 	ctx, cancel := context.WithCancel(ctx)
 
