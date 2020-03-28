@@ -4,8 +4,7 @@ import (
 	"context"
 	"net/http"
 
-	"go.opentelemetry.io/otel/plugin/grpctrace"
-	"go.opentelemetry.io/otel/plugin/httptrace"
+	"github.com/opentracing/opentracing-go/ext"
 
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/metadata"
@@ -16,6 +15,8 @@ import (
 	"go.opentelemetry.io/otel/api/global"
 	"go.opentelemetry.io/otel/api/key"
 	"go.opentelemetry.io/otel/api/trace"
+	"go.opentelemetry.io/otel/plugin/grpctrace"
+	"go.opentelemetry.io/otel/plugin/httptrace"
 )
 
 // UnaryServerInterceptor intercepts and extracts incoming trace data
@@ -36,7 +37,7 @@ func (o Options) UnaryServerInterceptor(ctx context.Context, req interface{}, in
 	tr := global.Tracer(o.ServiceName)
 	ctx, span := tr.Start(
 		trace.ContextWithRemoteSpanContext(ctx, spanCtx),
-		"middleware",
+		"drudge.middleware",
 		trace.WithAttributes(serverSpanAttrs...),
 		trace.WithSpanKind(trace.SpanKindServer),
 	)
@@ -51,7 +52,7 @@ func (o Options) UnaryClientInterceptor(ctx context.Context, method string, req,
 	metadataCopy := requestMetadata.Copy()
 
 	tr := global.Tracer(o.ServiceName)
-	err := tr.WithSpan(ctx, "middleware",
+	err := tr.WithSpan(ctx, "drudge.middleware",
 		func(ctx context.Context) error {
 			grpctrace.Inject(ctx, &metadataCopy)
 			ctx = metadata.NewOutgoingContext(ctx, metadataCopy)
@@ -91,8 +92,37 @@ func (o Options) tracingWrapper(h http.Handler) http.Handler {
 		)
 		defer span.End()
 
-		span.AddEvent(ctx, "handling this...")
+		span.AddEvent(ctx, "Handling HTTP Request")
+		span.SetAttributes(core.KeyValue{
+			Key:   core.Key(ext.HTTPUrl),
+			Value: core.String(r.URL.Path),
+		}, core.KeyValue{
+			Key:   core.Key(ext.HTTPMethod),
+			Value: core.String(r.Method),
+		}, core.KeyValue{
+			Key:   "HTTP.UserAgent",
+			Value: core.String(r.UserAgent()),
+		})
 
-		h.ServeHTTP(w, r)
+		trw := NewTraceableResponseWriter(w)
+		h.ServeHTTP(trw, r)
+		span.SetAttributes(core.KeyValue{
+			Key:   core.Key(ext.HTTPStatusCode),
+			Value: core.Int(trw.statusCode),
+		})
 	})
+}
+
+type traceableResponseWriter struct {
+	http.ResponseWriter
+	statusCode int
+}
+
+func NewTraceableResponseWriter(w http.ResponseWriter) *traceableResponseWriter {
+	return &traceableResponseWriter{w, http.StatusOK}
+}
+
+func (trw *traceableResponseWriter) WriteHeader(code int) {
+	trw.statusCode = code
+	trw.ResponseWriter.WriteHeader(code)
 }
