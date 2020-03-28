@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"net"
 	"net/http"
+	"strings"
 	"time"
 
 	grpc_middleware "github.com/grpc-ecosystem/go-grpc-middleware"
@@ -15,10 +16,14 @@ import (
 	grpc_prometheus "github.com/grpc-ecosystem/go-grpc-prometheus"
 	gwruntime "github.com/grpc-ecosystem/grpc-gateway/runtime"
 	"github.com/opentracing/opentracing-go"
+
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"go.opencensus.io/plugin/ocgrpc"
 	"go.opencensus.io/plugin/ochttp"
+	"go.opentelemetry.io/otel/api/global"
+	"go.opentelemetry.io/otel/exporters/trace/stdout"
+	sdktrace "go.opentelemetry.io/otel/sdk/trace"
 	"go.uber.org/zap"
 	"google.golang.org/grpc"
 )
@@ -57,8 +62,9 @@ type Options struct {
 
 	OnRegister func(server *grpc.Server) error
 
-	TraceExporter TraceExporter
-	TraceConfig   interface{}
+	// TraceExporter TraceExporter
+	ServiceName string
+	TraceConfig interface{}
 
 	Metrics *RegistryHandler
 }
@@ -74,16 +80,18 @@ func Run(ctx context.Context, opts Options) error {
 		}
 	}
 
-	var flush func()
-
-	if opts.TraceExporter != nil {
-		var err error
-
-		flush, err = opts.TraceExporter(opts.TraceConfig)
-		if err != nil {
-			return errors.WithMessage(err, "failed to register trace exporter")
-		}
+	exporter, err := stdout.NewExporter(stdout.Options{PrettyPrint: true})
+	if err != nil {
+		lg.Fatal("failed to create trace exporter", zap.Error(err))
 	}
+	tp, err := sdktrace.NewProvider(
+		sdktrace.WithConfig(sdktrace.Config{DefaultSampler: sdktrace.AlwaysSample()}),
+		sdktrace.WithSyncer(exporter),
+	)
+	if err != nil {
+		lg.Fatal("failed to create trace provider", zap.Error(err))
+	}
+	global.SetTraceProvider(tp)
 
 	ctx, cancel := context.WithCancel(ctx)
 
@@ -92,19 +100,15 @@ func Run(ctx context.Context, opts Options) error {
 			cancel()
 		}
 
-		if flush != nil {
-			flush()
-		}
-
 		if r := recover(); r != nil {
 			lg.Fatal("Recovered from fatal error", zap.Any("recovery", r))
 		}
 	}()
 
 	rpc := grpc.NewServer(
+		grpc.UnaryInterceptor(opts.UnaryServerInterceptor),
 		grpc_middleware.WithUnaryServerChain(
 			grpc_validator.UnaryServerInterceptor(),
-			grpc_opentracing.UnaryServerInterceptor(grpc_opentracing.WithTracer(opentracing.GlobalTracer())),
 			grpc_ctxtags.UnaryServerInterceptor(grpc_ctxtags.WithFieldExtractor(grpc_ctxtags.CodeGenRequestFieldExtractor)),
 			grpc_zap.UnaryServerInterceptor(lg, grpc_zap.WithLevels(codeToLevel)),
 			grpc_prometheus.UnaryServerInterceptor,
@@ -179,7 +183,7 @@ func Run(ctx context.Context, opts Options) error {
 	s := &http.Server{
 		Addr: opts.Addr,
 		Handler: &ochttp.Handler{
-			Handler: tracingWrapper(allowCORS(lg, r)),
+			Handler: grpcWrapper(rpc, opts.tracingWrapper(allowCORS(lg, r))),
 		},
 	}
 
@@ -199,4 +203,14 @@ func Run(ctx context.Context, opts Options) error {
 	}
 
 	return nil
+}
+
+func grpcWrapper(rpc, handler http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.ProtoMajor == 2 && strings.Contains(r.Header.Get("Content-Type"), "application/grpc") {
+			rpc.ServeHTTP(w, r)
+		} else {
+			handler.ServeHTTP(w, r)
+		}
+	})
 }
