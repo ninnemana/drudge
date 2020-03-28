@@ -20,48 +20,109 @@ import (
 )
 
 // UnaryServerInterceptor intercepts and extracts incoming trace data
-func (o Options) UnaryServerInterceptor(ctx context.Context, req interface{}, info *grpc.UnaryServerInfo, handler grpc.UnaryHandler) (interface{}, error) {
-	requestMetadata, _ := metadata.FromIncomingContext(ctx)
-	metadataCopy := requestMetadata.Copy()
+func UnaryServerInterceptor(n string) grpc.UnaryServerInterceptor {
+	name := n
+	return func(ctx context.Context, req interface{}, info *grpc.UnaryServerInfo, handler grpc.UnaryHandler) (interface{}, error) {
+		requestMetadata, _ := metadata.FromIncomingContext(ctx)
+		metadataCopy := requestMetadata.Copy()
 
-	entries, spanCtx := grpctrace.Extract(ctx, &metadataCopy)
-	ctx = correlation.ContextWithMap(ctx, correlation.NewMap(correlation.MapUpdate{
-		MultiKV: entries,
-	}))
+		entries, spanCtx := grpctrace.Extract(ctx, &metadataCopy)
+		ctx = correlation.ContextWithMap(ctx, correlation.NewMap(correlation.MapUpdate{
+			MultiKV: entries,
+		}))
 
-	grpcServerKey := key.New("grpc.server")
-	serverSpanAttrs := []core.KeyValue{
-		grpcServerKey.String(o.ServiceName),
+		grpcServerKey := key.New("grpc.server")
+		serverSpanAttrs := []core.KeyValue{
+			grpcServerKey.String(name),
+		}
+
+		tr := global.Tracer(name)
+		ctx, span := tr.Start(
+			trace.ContextWithRemoteSpanContext(ctx, spanCtx),
+			"drudge.middleware",
+			trace.WithAttributes(serverSpanAttrs...),
+			trace.WithSpanKind(trace.SpanKindServer),
+		)
+		defer span.End()
+
+		return handler(ctx, req)
 	}
+}
 
-	tr := global.Tracer(o.ServiceName)
-	ctx, span := tr.Start(
-		trace.ContextWithRemoteSpanContext(ctx, spanCtx),
-		"drudge.middleware",
-		trace.WithAttributes(serverSpanAttrs...),
-		trace.WithSpanKind(trace.SpanKindServer),
-	)
-	defer span.End()
+func StreamServerInterceptor(n string) grpc.StreamServerInterceptor {
+	name := n
+	return func(srv interface{}, ss grpc.ServerStream, info *grpc.StreamServerInfo, handler grpc.StreamHandler) error {
+		requestMetadata, _ := metadata.FromIncomingContext(ss.Context())
+		metadataCopy := requestMetadata.Copy()
 
-	return handler(ctx, req)
+		entries, spanCtx := grpctrace.Extract(ss.Context(), &metadataCopy)
+		ctx := correlation.ContextWithMap(ss.Context(), correlation.NewMap(correlation.MapUpdate{
+			MultiKV: entries,
+		}))
+
+		grpcServerKey := key.New("grpc.server")
+		serverSpanAttrs := []core.KeyValue{
+			grpcServerKey.String(name),
+		}
+
+		tr := global.Tracer(name)
+		ctx, span := tr.Start(
+			trace.ContextWithRemoteSpanContext(ctx, spanCtx),
+			"drudge.middleware",
+			trace.WithAttributes(serverSpanAttrs...),
+			trace.WithSpanKind(trace.SpanKindServer),
+		)
+		defer span.End()
+
+		return handler(ctx, ss)
+	}
 }
 
 // UnaryClientInterceptor intercepts and injects outgoing trace
-func (o Options) UnaryClientInterceptor(ctx context.Context, method string, req, reply interface{}, cc *grpc.ClientConn, invoker grpc.UnaryInvoker, opts ...grpc.CallOption) error {
-	requestMetadata, _ := metadata.FromOutgoingContext(ctx)
-	metadataCopy := requestMetadata.Copy()
+func UnaryClientInterceptor(n string) grpc.UnaryClientInterceptor {
+	name := n
+	return func(ctx context.Context, method string, req, reply interface{}, cc *grpc.ClientConn, invoker grpc.UnaryInvoker, opts ...grpc.CallOption) error {
+		requestMetadata, _ := metadata.FromOutgoingContext(ctx)
+		metadataCopy := requestMetadata.Copy()
 
-	tr := global.Tracer(o.ServiceName)
-	err := tr.WithSpan(ctx, "drudge.middleware",
-		func(ctx context.Context) error {
-			grpctrace.Inject(ctx, &metadataCopy)
-			ctx = metadata.NewOutgoingContext(ctx, metadataCopy)
+		tr := global.Tracer(name)
+		err := tr.WithSpan(ctx, "drudge.middleware",
+			func(ctx context.Context) error {
+				grpctrace.Inject(ctx, &metadataCopy)
+				ctx = metadata.NewOutgoingContext(ctx, metadataCopy)
 
-			err := invoker(ctx, method, req, reply, cc, opts...)
-			setTraceStatus(ctx, err)
-			return err
-		})
-	return err
+				err := invoker(ctx, method, req, reply, cc, opts...)
+				setTraceStatus(ctx, err)
+				return err
+			})
+		return err
+	}
+}
+
+// StreamClientInterceptor intercepts and injects outgoing trace
+func StreamClientInterceptor(n string) grpc.StreamClientInterceptor {
+	name := n
+	return func(ctx context.Context, desc *grpc.StreamDesc, cc *grpc.ClientConn, method string, streamer grpc.Streamer, opts ...grpc.CallOption) (grpc.ClientStream, error) {
+		requestMetadata, _ := metadata.FromOutgoingContext(ctx)
+		metadataCopy := requestMetadata.Copy()
+
+		tr := global.Tracer(name)
+		var cs grpc.ClientStream
+		err := tr.WithSpan(
+			ctx,
+			"drudge.middleware",
+			func(ctx context.Context) error {
+				grpctrace.Inject(ctx, &metadataCopy)
+				ctx = metadata.NewOutgoingContext(ctx, metadataCopy)
+
+				var err error
+				cs, err = streamer(ctx, desc, cc, method, opts...)
+				setTraceStatus(ctx, err)
+				return err
+			},
+		)
+		return cs, err
+	}
 }
 
 func setTraceStatus(ctx context.Context, err error) {
