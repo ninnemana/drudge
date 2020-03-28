@@ -126,3 +126,9 @@ func (trw *traceableResponseWriter) WriteHeader(code int) {
 	trw.statusCode = code
 	trw.ResponseWriter.WriteHeader(code)
 }
+
+func (trw *traceableResponseWriter) Flush() {
+	// Work around the fact that WriteHeader and a call to Flush would have caused a 200 response.
+	// This is the case when there is no payload.
+	trw.ResponseWriter.(http.Flusher).Flush()
+}
