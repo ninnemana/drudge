@@ -2,26 +2,26 @@ package drudge
 
 import (
 	"context"
+	"crypto/tls"
 	"fmt"
 	"net"
 	"net/http"
 
-	grpc_opentracing "github.com/grpc-ecosystem/go-grpc-middleware/tracing/opentracing"
 	grpc_prometheus "github.com/grpc-ecosystem/go-grpc-prometheus"
 	gwruntime "github.com/grpc-ecosystem/grpc-gateway/runtime"
-	"github.com/opentracing/opentracing-go"
 	"go.opencensus.io/plugin/ocgrpc"
 	"google.golang.org/grpc"
+	"google.golang.org/grpc/credentials"
 )
 
 type Handler func(context.Context, *gwruntime.ServeMux, *grpc.ClientConn) error
 
-func dial(ctx context.Context, network, addr string) (*grpc.ClientConn, error) {
+func dial(ctx context.Context, network, addr string, certs ...tls.Certificate) (*grpc.ClientConn, error) {
 	switch network {
 	case "tcp":
-		return dialTCP(ctx, addr)
+		return dialTCP(ctx, addr, certs...)
 	case "unix":
-		return dialUnix(ctx, addr)
+		return dialUnix(ctx, addr, certs...)
 	default:
 		return nil, fmt.Errorf("unsupported network type %q", network)
 	}
@@ -29,28 +29,23 @@ func dial(ctx context.Context, network, addr string) (*grpc.ClientConn, error) {
 
 // dialTCP creates a client connection via TCP.
 // "addr" must be a valid TCP address with a port number.
-func dialTCP(ctx context.Context, addr string) (*grpc.ClientConn, error) {
+func dialTCP(ctx context.Context, addr string, certs ...tls.Certificate) (*grpc.ClientConn, error) {
 	return grpc.DialContext(
 		ctx,
 		addr,
-		grpc.WithInsecure(),
+		grpc.WithTransportCredentials(credentials.NewTLS(&tls.Config{
+			Certificates:       certs,
+			InsecureSkipVerify: true,
+		})),
 		grpc.WithStatsHandler(&ocgrpc.ClientHandler{}),
-		grpc.WithUnaryInterceptor(
-			grpc_opentracing.UnaryClientInterceptor(
-				grpc_opentracing.WithTracer(opentracing.GlobalTracer()),
-			),
-		),
-		grpc.WithStreamInterceptor(
-			grpc_opentracing.StreamClientInterceptor(
-				grpc_opentracing.WithTracer(opentracing.GlobalTracer()),
-			),
-		),
+		grpc.WithUnaryInterceptor(UnaryClientInterceptor(serviceName)),
+		grpc.WithStreamInterceptor(StreamClientInterceptor(serviceName)),
 	)
 }
 
 // dialUnix creates a client connection via a unix domain socket.
 // "addr" must be a valid path to the socket.
-func dialUnix(ctx context.Context, addr string) (*grpc.ClientConn, error) {
+func dialUnix(ctx context.Context, addr string, certs ...tls.Certificate) (*grpc.ClientConn, error) {
 	d := func(ctx context.Context, addr string) (net.Conn, error) {
 		return net.Dial("unix", addr)
 	}
@@ -58,21 +53,16 @@ func dialUnix(ctx context.Context, addr string) (*grpc.ClientConn, error) {
 	return grpc.DialContext(
 		ctx,
 		addr,
-		grpc.WithInsecure(),
+		grpc.WithTransportCredentials(credentials.NewTLS(&tls.Config{
+			Certificates:       certs,
+			InsecureSkipVerify: true,
+		})),
 		grpc.WithContextDialer(d),
 		grpc.WithStatsHandler(&ocgrpc.ClientHandler{}),
-		grpc.WithUnaryInterceptor(
-			grpc_opentracing.UnaryClientInterceptor(
-				grpc_opentracing.WithTracer(opentracing.GlobalTracer()),
-			),
-		),
+		grpc.WithUnaryInterceptor(UnaryClientInterceptor(serviceName)),
 		grpc.WithUnaryInterceptor(grpc_prometheus.UnaryClientInterceptor),
 		grpc.WithStreamInterceptor(grpc_prometheus.StreamClientInterceptor),
-		grpc.WithStreamInterceptor(
-			grpc_opentracing.StreamClientInterceptor(
-				grpc_opentracing.WithTracer(opentracing.GlobalTracer()),
-			),
-		),
+		grpc.WithStreamInterceptor(StreamClientInterceptor(serviceName)),
 	)
 }
 

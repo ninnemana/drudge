@@ -2,6 +2,7 @@ package drudge
 
 import (
 	"context"
+	"crypto/tls"
 	"fmt"
 	"net"
 	"net/http"
@@ -23,11 +24,7 @@ import (
 	"go.opencensus.io/plugin/ochttp"
 	"go.uber.org/zap"
 	"google.golang.org/grpc"
-)
-
-const (
-	GoogleProjectID      = "GCE_PROJECT_ID"
-	GoogleServiceAccount = "GCE_SERVICE_ACCOUNT"
+	"google.golang.org/grpc/credentials"
 )
 
 // Endpoint describes a gRPC endpoint
@@ -35,6 +32,10 @@ type Endpoint struct {
 	Network string
 	Addr    string
 }
+
+var (
+	serviceName = ""
+)
 
 // Options is a set of options to be passed to Run
 type Options struct {
@@ -63,9 +64,15 @@ type Options struct {
 	ServiceName string
 
 	Metrics *RegistryHandler
+
+	// Certificates is used to define the TLS certificates used
+	// in the client/server handshake.
+	Certificates []tls.Certificate
 }
 
 func Run(ctx context.Context, opts Options) error {
+	serviceName = opts.ServiceName
+
 	lg := initLogger(-1, time.RFC3339)
 	// Make sure that log statements internal to gRPC library are logged using the zapLogger as well.
 	grpc_zap.ReplaceGrpcLogger(lg)
@@ -89,12 +96,16 @@ func Run(ctx context.Context, opts Options) error {
 	}()
 
 	rpc := grpc.NewServer(
+		grpc.Creds(credentials.NewTLS(&tls.Config{
+			Certificates:       opts.Certificates,
+			InsecureSkipVerify: true,
+		})),
 		grpc_middleware.WithUnaryServerChain(
 			grpc_validator.UnaryServerInterceptor(),
 			grpc_ctxtags.UnaryServerInterceptor(grpc_ctxtags.WithFieldExtractor(grpc_ctxtags.CodeGenRequestFieldExtractor)),
 			grpc_zap.UnaryServerInterceptor(lg, grpc_zap.WithLevels(codeToLevel)),
 			grpc_prometheus.UnaryServerInterceptor,
-			opts.UnaryServerInterceptor,
+			UnaryServerInterceptor(serviceName),
 		),
 		grpc_middleware.WithStreamServerChain(
 			grpc_validator.StreamServerInterceptor(),
@@ -135,7 +146,7 @@ func Run(ctx context.Context, opts Options) error {
 		zap.String("network", opts.RPC.Network),
 	)
 
-	conn, err := dial(ctx, opts.RPC.Network, opts.RPC.Addr)
+	conn, err := dial(ctx, opts.RPC.Network, opts.RPC.Addr, opts.Certificates...)
 	if err != nil {
 		return errors.Wrapf(err, "failed to create network connection for '%s' on '%s'", opts.RPC.Network, opts.RPC.Addr)
 	}
